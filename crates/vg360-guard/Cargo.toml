@@ -1,0 +1,11 @@
+[package]
+name = "vg360-guard"
+description = "Camera guard: detects a moved / blocked / lost CCTV view (pure-Rust port of camera_guard, no OpenCV)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+vg360-vision = { path = "../vg360-vision" }

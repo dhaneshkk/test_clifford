@@ -1,0 +1,8 @@
+/target
+**/*.onnx
+**/alerts/
+**/snapshots/
+**/reference/
+*.env
+.env*
+apps/vg360-server/public/samples/live_*

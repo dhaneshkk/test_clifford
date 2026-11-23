@@ -1,0 +1,12 @@
+[package]
+name = "vg360-vision"
+description = "Pure-Rust replacements for the OpenCV calls VisionGuard360 used (no OpenCV, no C++ toolchain)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+nalgebra = "0.33"
+vg360-geom = { path = "../vg360-geom" }

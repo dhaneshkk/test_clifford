@@ -1,0 +1,16 @@
+[package]
+name = "vg360-server"
+description = "VisionGuard360 operator console (Topcoat) + OpenAI-compatible /v1/chat/completions"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version = "1.99"
+
+[dependencies]
+topcoat = { version = "=0.12.0", features = ["fs"] }
+tokio = { version = "1", features = ["full"] }
+serde.workspace = true
+serde_json.workspace = true
+vg360-geom = { path = "../../crates/vg360-geom" }
+vg360-guard = { path = "../../crates/vg360-guard" }
+vg360-vision = { path = "../../crates/vg360-vision" }

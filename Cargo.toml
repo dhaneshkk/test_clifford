@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = ["crates/vg360-geom", "crates/vg360-vision", "crates/vg360-guard", "apps/vg360-server"]
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
+version = "0.1.0"
+rust-version = "1.85"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"

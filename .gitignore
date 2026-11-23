@@ -6,3 +6,4 @@
 *.env
 .env*
 apps/vg360-server/public/samples/live_*
+!models/ppe_clifford_folded.onnx

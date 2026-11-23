@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/vg360-geom", "crates/vg360-vision", "crates/vg360-guard", "apps/vg360-server"]
+members = ["crates/vg360-geom", "crates/vg360-vision", "crates/vg360-guard", "crates/vg360-infer", "apps/vg360-server"]
 
 [workspace.package]
 edition = "2024"

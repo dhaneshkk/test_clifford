@@ -1,0 +1,24 @@
+[package]
+name = "vg360-infer"
+description = "VisionGuard360 detector (YOLOX-Nano) and PPE classifier inference on CPU, pure Rust by default"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[features]
+default = ["tract"]
+# pure-Rust ONNX engine (no native libraries)
+tract = ["dep:tract-onnx"]
+# ONNX Runtime via a shared library loaded at run time (ORT_DYLIB_PATH); faster on x86 servers
+ort = ["dep:ort"]
+
+[dependencies]
+vg360-vision = { path = "../vg360-vision" }
+vg360-geom = { path = "../vg360-geom" }
+tract-onnx = { version = "0.21", optional = true }
+ort = { version = "=2.0.0-rc.15", optional = true, default-features = false, features = ["load-dynamic", "ndarray"] }
+
+[dev-dependencies]
+serde.workspace = true
+serde_json.workspace = true

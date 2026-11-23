@@ -26,6 +26,13 @@ impl Camera {
         mul(&rz, &mul(&rx, &mul(&base, &rr)))
     }
 
+    /// Pixel → world ray direction (not normalised).
+    pub fn ray(&self, u: f64, v: f64) -> [f64; 3] {
+        let d = [(u - self.cx) / self.f_px, (v - self.cy) / self.f_px, 1.0];
+        let r = self.r();
+        [0, 1, 2].map(|i| r[i][0] * d[0] + r[i][1] * d[1] + r[i][2] * d[2])
+    }
+
     /// Pixel → deck point (metres). `None` if the ray points at or above the horizon.
     pub fn ground(&self, u: f64, v: f64) -> Option<[f64; 2]> {
         let d = [(u - self.cx) / self.f_px, (v - self.cy) / self.f_px, 1.0];

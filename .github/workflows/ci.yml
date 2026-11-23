@@ -2,18 +2,33 @@ name: ci
 on: [push, pull_request]
 jobs:
   core:
-    name: geometry · vision · guard (no OpenCV)
+    name: geometry · vision · guard · inference (pure Rust)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --release -p vg360-geom -p vg360-vision -p vg360-guard
+      - run: ./scripts/fetch_models.sh
+      - run: cargo test --release -p vg360-geom -p vg360-vision -p vg360-guard -p vg360-infer
+  onnxruntime:
+    name: inference on ONNX Runtime (load-dynamic)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v6
+        with: { python-version: "3.12" }
+      - run: pip install onnxruntime
+      - run: ./scripts/fetch_models.sh
+      - run: |
+          export ORT_DYLIB_PATH=$(python -c "import onnxruntime,glob,os;print(glob.glob(os.path.join(os.path.dirname(onnxruntime.__file__),'capi','libonnxruntime.so*'))[0])")
+          cargo test --release -p vg360-infer --features ort -- --nocapture
   server:
     name: console (Topcoat, Rust ≥ 1.99)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --release -p vg360-server

@@ -15,15 +15,30 @@ pub struct Camera {
 }
 
 impl Camera {
-    /// Rotation camera→world (world: x east, y north, z up; camera looks along +y, pitched down).
-    fn r(&self) -> [[f64; 3]; 3] {
-        let (p, y, r) = (self.pitch_deg.to_radians(), self.yaw_deg.to_radians(), self.roll_deg.to_radians());
-        // camera axes in camera frame: x right, y down, z forward
-        let base = [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]]; // cam→world for level camera facing +y
-        let rx = [[1.0, 0.0, 0.0], [0.0, p.cos(), p.sin()], [0.0, -p.sin(), p.cos()]];
-        let rz = [[y.cos(), -y.sin(), 0.0], [y.sin(), y.cos(), 0.0], [0.0, 0.0, 1.0]];
-        let rr = [[r.cos(), -r.sin(), 0.0], [r.sin(), r.cos(), 0.0], [0.0, 0.0, 1.0]];
-        mul(&rz, &mul(&rx, &mul(&base, &rr)))
+    /// Rotation camera→world, columns = camera right, down, forward in world coordinates
+    /// (world: x east, y north, z up). Same construction as the notebook's `Camera`:
+    /// yaw is a compass bearing (clockwise from +y), pitch is the downward tilt, roll turns the image plane.
+    pub fn rotation(&self) -> [[f64; 3]; 3] {
+        let (th, ps, rl) = (self.pitch_deg.to_radians(), self.yaw_deg.to_radians(), self.roll_deg.to_radians());
+        let fwd = [ps.sin() * th.cos(), ps.cos() * th.cos(), -th.sin()];
+        let n = fwd[1].hypot(fwd[0]);
+        let right = [fwd[1] / n, -fwd[0] / n, 0.0];
+        let down = [fwd[1] * right[2] - fwd[2] * right[1], fwd[2] * right[0] - fwd[0] * right[2], fwd[0] * right[1] - fwd[1] * right[0]];
+        let (c, s) = (rl.cos(), rl.sin());
+        let r2: [f64; 3] = std::array::from_fn(|i| c * right[i] + s * down[i]);
+        let d2: [f64; 3] = std::array::from_fn(|i| -s * right[i] + c * down[i]);
+        std::array::from_fn(|i| [r2[i], d2[i], fwd[i]])
+    }
+    fn r(&self) -> [[f64; 3]; 3] { self.rotation() }
+
+    pub fn centre(&self) -> [f64; 3] { [self.x0, self.y0, self.height_m] }
+
+    /// Deck/world point → pixel without the in-front check (the notebook's `project`).
+    pub fn project3_raw(&self, p: [f64; 3]) -> [f64; 2] {
+        let r = self.r();
+        let d = [p[0] - self.x0, p[1] - self.y0, p[2] - self.height_m];
+        let c: [f64; 3] = std::array::from_fn(|i| r[0][i] * d[0] + r[1][i] * d[1] + r[2][i] * d[2]);
+        [self.f_px * c[0] / c[2] + self.cx, self.f_px * c[1] / c[2] + self.cy]
     }
 
     /// Pixel → world ray direction (not normalised).
@@ -61,11 +76,6 @@ impl Camera {
     }
 }
 
-fn mul(a: &[[f64; 3]; 3], b: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
-    let mut m = [[0.0; 3]; 3];
-    for i in 0..3 { for j in 0..3 { for k in 0..3 { m[i][j] += a[i][k] * b[k][j]; } } }
-    m
-}
 
 #[cfg(test)]
 mod tests {

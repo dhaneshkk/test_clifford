@@ -1,6 +1,6 @@
 {
  "vg360_notebook_export": 1,
- "generated": "2026-11-23T11:04:52",
+ "generated": "2026-11-23T13:08:23",
  "source": "notebook simulated site (noisy projected boxes; bodies share the fall-fitter's shape)",
  "rules": {
   "lift": {
@@ -44,12 +44,12 @@
    "floor": 0.8,
    "cm": [
     664,
-    139,
+    138,
     3,
-    7212
+    7213
    ],
    "validated_on": "notebook simulated site (noisy projected boxes; bodies share the fall-fitter's shape)",
-   "mcc": 0.8984086180147024
+   "mcc": 0.8990314709379517
   },
   "fall": {
    "hz": "H06",
@@ -59,13 +59,13 @@
    "fol": "∀t. (∃p. Person(p) ∧ In(p, site, t) ∧ For(Down(p), t, 2s)) ∨ Spill(walkway(site), t) → Alert(fall_or_spill, site, t)",
    "floor": 0.75,
    "cm": [
-    266,
-    58,
-    149,
-    7545
+    313,
+    52,
+    102,
+    7551
    ],
    "validated_on": "notebook simulated site (noisy projected boxes; bodies share the fall-fitter's shape)",
-   "mcc": 0.712527505481057
+   "mcc": 0.7943177212283621
   },
   "ppe": {
    "hz": "H03",
@@ -208,306 +208,290 @@
   {
    "time": "12.7",
    "rule": "red",
-   "who": "Track 15",
+   "who": "Track 13",
    "clip": "sim-127",
    "prev": "d6e43d2e97c1e873f040be3e282d1a20c3e76da48a08574780ea89e3021cb614",
-   "hash": "d77ca397f6c5f7fd9b10a9138b33d2240ddaca0b20d1ff5a512f0b77699daeb6"
+   "hash": "c35f03271cc23b10112d21e328e57c33cb69832fbc37d8ba80d5dc702f28aa6c"
   },
   {
    "time": "13.6",
    "rule": "red",
    "who": "Track 3",
    "clip": "sim-136",
-   "prev": "d77ca397f6c5f7fd9b10a9138b33d2240ddaca0b20d1ff5a512f0b77699daeb6",
-   "hash": "64f02bee2c05c3157923b96b102bd284ba7cec29aec156fd7e858470fa32e6dd"
+   "prev": "c35f03271cc23b10112d21e328e57c33cb69832fbc37d8ba80d5dc702f28aa6c",
+   "hash": "f4e14943480b7dbef8453569a71d9cbe8d4703c47c22e5d84e3ba0e7d6769959"
   },
   {
    "time": "14.9",
    "rule": "red",
    "who": "Track 4",
    "clip": "sim-149",
-   "prev": "64f02bee2c05c3157923b96b102bd284ba7cec29aec156fd7e858470fa32e6dd",
-   "hash": "c5d87d16516c979790821ab57d4d3540b135a28e0acbf6aa3aad2e61f1ccdb58"
+   "prev": "f4e14943480b7dbef8453569a71d9cbe8d4703c47c22e5d84e3ba0e7d6769959",
+   "hash": "c1617ae065c58da4e7d0d5cc69642d7dab2c0a688290d2b540e494eb4cf96f58"
   },
   {
    "time": "18.7",
    "rule": "lift",
    "who": "Track 7",
    "clip": "sim-187",
-   "prev": "c5d87d16516c979790821ab57d4d3540b135a28e0acbf6aa3aad2e61f1ccdb58",
-   "hash": "9be64511c489785f5bf5ed9b60d9bb427e25b3e3b913d5b543694aa1990ee7f3"
+   "prev": "c1617ae065c58da4e7d0d5cc69642d7dab2c0a688290d2b540e494eb4cf96f58",
+   "hash": "9ecb5d43a5b7b36fd0b6b3f83d641d6df6151a6ac5e36c0f8b22e6f70005bbfd"
   },
   {
    "time": "19.6",
    "rule": "lift",
    "who": "Track 14",
    "clip": "sim-196",
-   "prev": "9be64511c489785f5bf5ed9b60d9bb427e25b3e3b913d5b543694aa1990ee7f3",
-   "hash": "d45e4c7bad166d1046c4ea4254cdf246e494a0bcf58aee302ea94238ab8beb41"
+   "prev": "9ecb5d43a5b7b36fd0b6b3f83d641d6df6151a6ac5e36c0f8b22e6f70005bbfd",
+   "hash": "4d9944c384301703f46678899040e39fbefff5b06f92b96ee926d576bfb189fb"
   },
   {
    "time": "20.2",
    "rule": "lift",
    "who": "Track 5",
    "clip": "sim-202",
-   "prev": "d45e4c7bad166d1046c4ea4254cdf246e494a0bcf58aee302ea94238ab8beb41",
-   "hash": "720562997ba675b916dd85c4d72f6925d337050be994cb927ba5badcc6794319"
+   "prev": "4d9944c384301703f46678899040e39fbefff5b06f92b96ee926d576bfb189fb",
+   "hash": "f151787a90306800c8c4f97d0e9c36f1c85c0212cf48dc6a93c2d5e5be978e35"
   },
   {
    "time": "20.9",
    "rule": "edge",
    "who": "Track 14",
    "clip": "sim-209",
-   "prev": "720562997ba675b916dd85c4d72f6925d337050be994cb927ba5badcc6794319",
-   "hash": "31516dd37466250359d8c4f02a61531a77c9ad3b6cf38b60494a2323bb9efa11"
+   "prev": "f151787a90306800c8c4f97d0e9c36f1c85c0212cf48dc6a93c2d5e5be978e35",
+   "hash": "1a6adbad9189f2865da5d4975749ff5e0cc3589bdbde6500ae0dec550261c940"
   },
   {
    "time": "21.7",
    "rule": "lift",
    "who": "Track 10",
    "clip": "sim-217",
-   "prev": "31516dd37466250359d8c4f02a61531a77c9ad3b6cf38b60494a2323bb9efa11",
-   "hash": "01b886ee4b5530648bd1909e637599d52a82d3684caaf21bddc61f008977faf8"
+   "prev": "1a6adbad9189f2865da5d4975749ff5e0cc3589bdbde6500ae0dec550261c940",
+   "hash": "3ed8f2fe9bc735b8f3c34636f37c011110da8f51822485dc0da6618831aba9b1"
   },
   {
    "time": "22.1",
    "rule": "fall",
    "who": "Track 5",
    "clip": "sim-221",
-   "prev": "01b886ee4b5530648bd1909e637599d52a82d3684caaf21bddc61f008977faf8",
-   "hash": "e18a98ce067a2032949ab2cd484e7ccd02a7347731604862f14bbd497b8841d2"
+   "prev": "3ed8f2fe9bc735b8f3c34636f37c011110da8f51822485dc0da6618831aba9b1",
+   "hash": "008b730b98f46ac12cc0966f47478bf698803e6b927125398d9eff5578bf5216"
   },
   {
    "time": "24.1",
    "rule": "lift",
    "who": "Track 8",
    "clip": "sim-241",
-   "prev": "e18a98ce067a2032949ab2cd484e7ccd02a7347731604862f14bbd497b8841d2",
-   "hash": "873af56248aaf9f15acc92e37898ea0673f97c9c2fa91c0e4cd05758ce59b40e"
+   "prev": "008b730b98f46ac12cc0966f47478bf698803e6b927125398d9eff5578bf5216",
+   "hash": "0706ca7a526dd189dced2e330bc9dbdbd96d5ffc7570087ed28953f9f7f7e0af"
   },
   {
    "time": "24.2",
    "rule": "edge",
    "who": "Track 8",
    "clip": "sim-242",
-   "prev": "873af56248aaf9f15acc92e37898ea0673f97c9c2fa91c0e4cd05758ce59b40e",
-   "hash": "b52519f99c053fd29522b430b75d1432e60cc5eb347c49776491b538707fc3a3"
+   "prev": "0706ca7a526dd189dced2e330bc9dbdbd96d5ffc7570087ed28953f9f7f7e0af",
+   "hash": "6d60b36973b9092b12df8eef8b381c9a31edc73b2dd4bd693cd8deb549e49577"
   },
   {
    "time": "24.6",
    "rule": "edge",
    "who": "Track 11",
    "clip": "sim-246",
-   "prev": "b52519f99c053fd29522b430b75d1432e60cc5eb347c49776491b538707fc3a3",
-   "hash": "beae00e152162e3a5d8f4593df257739d893d13e387ec3538ed80e107a5620f5"
+   "prev": "6d60b36973b9092b12df8eef8b381c9a31edc73b2dd4bd693cd8deb549e49577",
+   "hash": "e80bc8c44f1bc2fc1724b70ff95c4fab6a85d0391391a8c2942ec28892bdcd08"
   },
   {
-   "time": "27.4",
-   "rule": "edge",
-   "who": "Track 16",
-   "clip": "sim-274",
-   "prev": "beae00e152162e3a5d8f4593df257739d893d13e387ec3538ed80e107a5620f5",
-   "hash": "0072944086ef9c15f702accc89ecff8b34031d1e92d48497883b55a211bbe23f"
-  },
-  {
-   "time": "29.4",
+   "time": "28.3",
    "rule": "fall",
-   "who": "Track 16",
-   "clip": "sim-294",
-   "prev": "0072944086ef9c15f702accc89ecff8b34031d1e92d48497883b55a211bbe23f",
-   "hash": "999934e985d2eebd9571f07ef2e52b24c77530c8922e71545ec3768069b6972a"
+   "who": "Track 12",
+   "clip": "sim-283",
+   "prev": "e80bc8c44f1bc2fc1724b70ff95c4fab6a85d0391391a8c2942ec28892bdcd08",
+   "hash": "f8ed97e892e6c3c14f02504eff65a66668ef8c01f4a87668f6fb126845aba989"
   },
   {
    "time": "29.5",
    "rule": "fall",
    "who": "Track 7",
    "clip": "sim-295",
-   "prev": "999934e985d2eebd9571f07ef2e52b24c77530c8922e71545ec3768069b6972a",
-   "hash": "7f1d99b638f9066aa7ff84021c6cda21471bfe075ba2056df8a25631fd9893a9"
+   "prev": "f8ed97e892e6c3c14f02504eff65a66668ef8c01f4a87668f6fb126845aba989",
+   "hash": "bf6e5242491554821977158c144941af2c451d724b26095ce4ea2c472257b526"
   },
   {
    "time": "30.0",
    "rule": "red",
    "who": "Track 7",
    "clip": "sim-300",
-   "prev": "7f1d99b638f9066aa7ff84021c6cda21471bfe075ba2056df8a25631fd9893a9",
-   "hash": "48af262d76a28df2c8b788f1073f8b5c068e8a22cda9a3973264c3832add1a57"
+   "prev": "bf6e5242491554821977158c144941af2c451d724b26095ce4ea2c472257b526",
+   "hash": "ff3d748b5bd5e942e07864c20f569493a9dd64a43bab048755b8466d5e90ac45"
   },
   {
    "time": "30.8",
    "rule": "red",
    "who": "Track 11",
    "clip": "sim-308",
-   "prev": "48af262d76a28df2c8b788f1073f8b5c068e8a22cda9a3973264c3832add1a57",
-   "hash": "6550f20a725d728941e45331616abd72854e350f0ac900444b380a1fb78472e8"
+   "prev": "ff3d748b5bd5e942e07864c20f569493a9dd64a43bab048755b8466d5e90ac45",
+   "hash": "3705c89daf7a5bd5a747bfd9a88632907f848d0b64791ab96401017806146ec2"
   },
   {
    "time": "31.6",
    "rule": "red",
    "who": "Track 4",
    "clip": "sim-316",
-   "prev": "6550f20a725d728941e45331616abd72854e350f0ac900444b380a1fb78472e8",
-   "hash": "418c93d3623214fae14549ae41f6c873ee4ac5394a3766cd705f820e5cbc1264"
-  },
-  {
-   "time": "33.2",
-   "rule": "fall",
-   "who": "Track 8",
-   "clip": "sim-332",
-   "prev": "418c93d3623214fae14549ae41f6c873ee4ac5394a3766cd705f820e5cbc1264",
-   "hash": "c231e1e1e224446d1955ebcecf0211d0ff7639b8db1a0d244aa070512cd8e663"
+   "prev": "3705c89daf7a5bd5a747bfd9a88632907f848d0b64791ab96401017806146ec2",
+   "hash": "9fb026639549da262ecbe89a0cb9446610692cd99af3c3b9fb0e1d99e9c952f1"
   },
   {
    "time": "33.3",
    "rule": "fall",
    "who": "Track 2",
    "clip": "sim-333",
-   "prev": "c231e1e1e224446d1955ebcecf0211d0ff7639b8db1a0d244aa070512cd8e663",
-   "hash": "28e14f7c013e83f807978c80e72ae598a3ee54a74aac9ec85d1616a99459f656"
+   "prev": "9fb026639549da262ecbe89a0cb9446610692cd99af3c3b9fb0e1d99e9c952f1",
+   "hash": "f1c3b25d806745c21df8e5b018db2a2a9220ae7b2d053b0151678f80ec2f7750"
   },
   {
    "time": "33.8",
    "rule": "red",
    "who": "Track 14",
    "clip": "sim-338",
-   "prev": "28e14f7c013e83f807978c80e72ae598a3ee54a74aac9ec85d1616a99459f656",
-   "hash": "7f7cd0fd297ed1337b563bacd24847a022b0b565c4fc085102d680541247ed06"
+   "prev": "f1c3b25d806745c21df8e5b018db2a2a9220ae7b2d053b0151678f80ec2f7750",
+   "hash": "eb8eac8cd0e0e213d9cdb648a5eac6ff4a18f6eea79b3ef11e31736401a935ac"
   },
   {
-   "time": "34.1",
+   "time": "33.8",
    "rule": "fall",
-   "who": "Track 17",
-   "clip": "sim-341",
-   "prev": "7f7cd0fd297ed1337b563bacd24847a022b0b565c4fc085102d680541247ed06",
-   "hash": "ac2edc7851f02dce9ccebcf04f7812d75582de9295b458786922956eafb3a073"
+   "who": "Track 10",
+   "clip": "sim-338",
+   "prev": "eb8eac8cd0e0e213d9cdb648a5eac6ff4a18f6eea79b3ef11e31736401a935ac",
+   "hash": "f18e5cefe440fe00cc24246e70284933539c3d34ad046eea55cd6e5c69334658"
   },
   {
    "time": "34.2",
    "rule": "edge",
    "who": "Track 5",
    "clip": "sim-342",
-   "prev": "ac2edc7851f02dce9ccebcf04f7812d75582de9295b458786922956eafb3a073",
-   "hash": "152aa935c6d0714c62f2c647eaaba73647ebf3a63bddcbf66298cd64eba551b5"
+   "prev": "f18e5cefe440fe00cc24246e70284933539c3d34ad046eea55cd6e5c69334658",
+   "hash": "bb62439962dfc222a43b5509e6c04de9288a827cb13d83ec6f2af1ede52195f6"
   },
   {
    "time": "34.5",
    "rule": "edge",
    "who": "Track 9",
    "clip": "sim-345",
-   "prev": "152aa935c6d0714c62f2c647eaaba73647ebf3a63bddcbf66298cd64eba551b5",
-   "hash": "c3392166ba982e3fd4935d8e1e1311cc0f526b46ae39188d2afab8addad798dd"
+   "prev": "bb62439962dfc222a43b5509e6c04de9288a827cb13d83ec6f2af1ede52195f6",
+   "hash": "4b58466e144f08ba6b1aadce2b6c0aff4aac5b7e1388460fe3723e213c3bbf3d"
   },
   {
    "time": "34.6",
    "rule": "edge",
    "who": "Track 3",
    "clip": "sim-346",
-   "prev": "c3392166ba982e3fd4935d8e1e1311cc0f526b46ae39188d2afab8addad798dd",
-   "hash": "b6b96dc8d9207b67a1467a2d178003f15a802ef2e3760e36cf3e14d9a6b36a67"
+   "prev": "4b58466e144f08ba6b1aadce2b6c0aff4aac5b7e1388460fe3723e213c3bbf3d",
+   "hash": "dad57d36f601cce828417615bb4ab77604ceb5ca206a44840abd4b779a8dba1c"
   },
   {
    "time": "34.9",
    "rule": "red",
    "who": "Track 11",
    "clip": "sim-349",
-   "prev": "b6b96dc8d9207b67a1467a2d178003f15a802ef2e3760e36cf3e14d9a6b36a67",
-   "hash": "ced2ff81bb6f9fdcdab1493677cd1e85bd781b343c3420b1e36b4bb374e2d09a"
-  },
-  {
-   "time": "39.0",
-   "rule": "fall",
-   "who": "Track 9",
-   "clip": "sim-390",
-   "prev": "ced2ff81bb6f9fdcdab1493677cd1e85bd781b343c3420b1e36b4bb374e2d09a",
-   "hash": "1cb68ac754677c8e97aabb552556b34b125b7f9fb61998b1b6d8861a53351807"
+   "prev": "dad57d36f601cce828417615bb4ab77604ceb5ca206a44840abd4b779a8dba1c",
+   "hash": "7c1a53dafc32fe4eef7f16ff713d2b0532c710a8d6991a547a8171ee45130aa4"
   },
   {
    "time": "41.3",
    "rule": "edge",
    "who": "Track 1",
    "clip": "sim-413",
-   "prev": "1cb68ac754677c8e97aabb552556b34b125b7f9fb61998b1b6d8861a53351807",
-   "hash": "566fde5e8f9a4cb77721de544b315ae5d74af097e762f989c2ea7792e654f570"
+   "prev": "7c1a53dafc32fe4eef7f16ff713d2b0532c710a8d6991a547a8171ee45130aa4",
+   "hash": "3bca3d25c03b942b3b627d538dc65b652e83c6820d22d13fd2670e52804ac153"
   },
   {
    "time": "42.3",
    "rule": "red",
    "who": "Track 2",
    "clip": "sim-423",
-   "prev": "566fde5e8f9a4cb77721de544b315ae5d74af097e762f989c2ea7792e654f570",
-   "hash": "bbbf1e7dc50ffd375704fdc42ba71217080e040cace6a35112fd6f1f7d4fd4c6"
+   "prev": "3bca3d25c03b942b3b627d538dc65b652e83c6820d22d13fd2670e52804ac153",
+   "hash": "79fc7c75b915ff310cbdec84a496c9537d4fb28c644e4d363e2c78358284248d"
   },
   {
    "time": "45.2",
    "rule": "lift",
-   "who": "Track 5",
+   "who": "Track 8",
    "clip": "sim-452",
-   "prev": "bbbf1e7dc50ffd375704fdc42ba71217080e040cace6a35112fd6f1f7d4fd4c6",
-   "hash": "85194b4e402bd818afcde2ab6c800f75e5d3badfcab99eb0d45a0364d3762041"
+   "prev": "79fc7c75b915ff310cbdec84a496c9537d4fb28c644e4d363e2c78358284248d",
+   "hash": "c1f9d76c97b609f96fbd65ce554a65acf975955e2616ecc4c7c7520fdb06fbaf"
   },
   {
    "time": "46.0",
    "rule": "lift",
-   "who": "Track 9",
+   "who": "Track 15",
    "clip": "sim-460",
-   "prev": "85194b4e402bd818afcde2ab6c800f75e5d3badfcab99eb0d45a0364d3762041",
-   "hash": "f9e0182a0141517dee9f2e42bfda17ca26aed0216dee52b7e0781c40fb6137a4"
+   "prev": "c1f9d76c97b609f96fbd65ce554a65acf975955e2616ecc4c7c7520fdb06fbaf",
+   "hash": "acad22e51d0b9fb14f3b3f14ab9d8f62d76ecbc2344e951764ac702f59edb894"
   },
   {
    "time": "46.1",
    "rule": "red",
-   "who": "Track 8",
+   "who": "Track 5",
    "clip": "sim-461",
-   "prev": "f9e0182a0141517dee9f2e42bfda17ca26aed0216dee52b7e0781c40fb6137a4",
-   "hash": "1032ec403089f5d0b5a5290af45a05043cabd0dbbcecbc4b8080d950becc5b39"
+   "prev": "acad22e51d0b9fb14f3b3f14ab9d8f62d76ecbc2344e951764ac702f59edb894",
+   "hash": "310261ab0a8119212ad283ed22bdca956231e6592f4f91590dd743fb0f537ffc"
   },
   {
    "time": "47.6",
    "rule": "lift",
-   "who": "Track 16",
+   "who": "Track 9",
    "clip": "sim-476",
-   "prev": "1032ec403089f5d0b5a5290af45a05043cabd0dbbcecbc4b8080d950becc5b39",
-   "hash": "9e582fa2883ab44f1b71af6481c8b516d5d71d8cb6a47803dd6dca8333d3a95d"
+   "prev": "310261ab0a8119212ad283ed22bdca956231e6592f4f91590dd743fb0f537ffc",
+   "hash": "07a7420b110daeb86a2ef8dd215013397fb34d5caf9d5768ce5044da767e84ac"
   },
   {
    "time": "47.6",
    "rule": "lift",
    "who": "Track 7",
    "clip": "sim-476",
-   "prev": "9e582fa2883ab44f1b71af6481c8b516d5d71d8cb6a47803dd6dca8333d3a95d",
-   "hash": "ffcc81a05afb15984805d2f05464f0a981d95acf9970a3b45b5cec28e07d8b1c"
+   "prev": "07a7420b110daeb86a2ef8dd215013397fb34d5caf9d5768ce5044da767e84ac",
+   "hash": "49a61333e6c2d5d1ca92d0f450c690629824e8d0133c5ce8a45dd91ac8ac3095"
   },
   {
    "time": "48.3",
    "rule": "edge",
    "who": "Track 7",
    "clip": "sim-483",
-   "prev": "ffcc81a05afb15984805d2f05464f0a981d95acf9970a3b45b5cec28e07d8b1c",
-   "hash": "8ec837b3e381b20a47e4762d9ab7955f9157130f8f75889dd24842d39eeef764"
+   "prev": "49a61333e6c2d5d1ca92d0f450c690629824e8d0133c5ce8a45dd91ac8ac3095",
+   "hash": "b3146e7d875252a3e1620f0c8d6ff311090ec316a65eb729e462730bdf824620"
   },
   {
    "time": "53.8",
    "rule": "lift",
    "who": "Track 6",
    "clip": "sim-538",
-   "prev": "8ec837b3e381b20a47e4762d9ab7955f9157130f8f75889dd24842d39eeef764",
-   "hash": "a03a207892f82c8ad1f1b61222f099f0445c64e80c145d512e6ed2f8f6662601"
+   "prev": "b3146e7d875252a3e1620f0c8d6ff311090ec316a65eb729e462730bdf824620",
+   "hash": "70a78fcad3bc22721869fbbc1b08fe55acdcd82f2437ffe20127343c59550941"
   },
   {
    "time": "56.1",
    "rule": "edge",
-   "who": "Track 19",
+   "who": "Track 4",
    "clip": "sim-561",
-   "prev": "a03a207892f82c8ad1f1b61222f099f0445c64e80c145d512e6ed2f8f6662601",
-   "hash": "4f171fe55e5555c74baa0310cd30562198832afee1257f8770400d05be01865b"
+   "prev": "70a78fcad3bc22721869fbbc1b08fe55acdcd82f2437ffe20127343c59550941",
+   "hash": "e503b8527bc45a32411ad8c69d2b19ef17f0ae10a93f389d53834e19a94c0ffe"
   },
   {
    "time": "58.0",
    "rule": "lift",
    "who": "Track 14",
    "clip": "sim-580",
-   "prev": "4f171fe55e5555c74baa0310cd30562198832afee1257f8770400d05be01865b",
-   "hash": "670f03730fe764e9f3187c40b18dc7894afaeb3f3d6dff77f05af04103625f99"
+   "prev": "e503b8527bc45a32411ad8c69d2b19ef17f0ae10a93f389d53834e19a94c0ffe",
+   "hash": "1f7b1fd245e1bf2131ce32091c1c9bb4d80bdfda1c7f227ae39cff713308dba6"
+  },
+  {
+   "time": "58.2",
+   "rule": "edge",
+   "who": "Track 15",
+   "clip": "sim-582",
+   "prev": "1f7b1fd245e1bf2131ce32091c1c9bb4d80bdfda1c7f227ae39cff713308dba6",
+   "hash": "233e0dbaca12cc38bd5ab9262b433c9e19bf5d7f4059df52d53ec4d7b6f3763d"
   }
  ],
  "ledger_verified": true

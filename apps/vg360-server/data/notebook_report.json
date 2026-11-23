@@ -52,32 +52,32 @@
   },
   "sim": {
     "intrusion:pump_skid_keepout": {
-      "MCC": 0.9702286212722584,
+      "MCC": 0.9702286,
       "positives": 721,
       "n": 8018
     },
     "intrusion:crane_hook": {
-      "MCC": 0.9269935485191544,
+      "MCC": 0.9269935,
       "positives": 960,
       "n": 8018
     },
     "intrusion:suspended_load": {
-      "MCC": 0.9404247566608426,
+      "MCC": 0.9404248,
       "positives": 975,
       "n": 8018
     },
     "intrusion:rig_edge": {
-      "MCC": 0.8617346146673203,
+      "MCC": 0.8617346,
       "positives": 77,
       "n": 8018
     },
     "person_down(frame)": {
-      "MCC": 0.825372887854014,
+      "MCC": 0.8253729,
       "positives": 529,
       "n": 8018
     },
     "fall_event(person)": {
-      "MCC": 0.8606629658238705,
+      "MCC": 0.860663,
       "positives": 6,
       "n": 14,
       "confusion[[tn,fp],[fn,tp]]": [
@@ -91,31 +91,30 @@
         ]
       ]
     },
-    "geometry_ms_per_person": 0.8996398392864893,
     "identities": {
       "people": 14,
-      "tracks_created": 19
+      "tracks_created": 15
     },
     "rule:lift (P1)": {
-      "MCC": 0.7669048365866583,
+      "MCC": 0.7669048,
       "floor": 0.85,
       "positives": 161,
       "n": 8018
     },
     "rule:red (P1)": {
-      "MCC": 0.9023474523462174,
+      "MCC": 0.9023475,
       "floor": 0.85,
       "positives": 574,
       "n": 8018
     },
     "rule:edge (-)": {
-      "MCC": 0.8984086180147024,
+      "MCC": 0.8990315,
       "floor": 0.8,
       "positives": 667,
       "n": 8018
     },
     "rule:fall (P2)": {
-      "MCC": 0.712527505481057,
+      "MCC": 0.7943177,
       "floor": 0.75,
       "positives": 415,
       "n": 8018

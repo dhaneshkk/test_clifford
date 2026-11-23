@@ -2991,6 +2991,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "vg360-scene"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "vg360-geom",
+]
+
+[[package]]
 name = "vg360-server"
 version = "0.1.0"
 dependencies = [

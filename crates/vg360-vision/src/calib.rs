@@ -47,7 +47,7 @@ fn decompose(h: &[[f64; 3]; 3], f: f64, cx: f64, cy: f64) -> Option<Camera> {
     let fwd = r.row(2).transpose(); // camera z axis in world coordinates
     let height = c[2].abs();
     let pitch = (-fwd[2]).clamp(-1.0, 1.0).asin().to_degrees();
-    let yaw = (-fwd[0]).atan2(fwd[1]).to_degrees();
+    let yaw = fwd[0].atan2(fwd[1]).to_degrees(); // compass bearing, as Camera::rotation
     Some(Camera { f_px: f, cx, cy, height_m: height, pitch_deg: pitch, yaw_deg: yaw, roll_deg: 0.0, x0: c[0], y0: c[1] })
 }
 

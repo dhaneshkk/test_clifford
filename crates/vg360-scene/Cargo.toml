@@ -1,0 +1,14 @@
+[package]
+name = "vg360-scene"
+description = "VisionGuard360 per-camera scene: deck geometry, 3-D pose fit, SE(2) tracker, CGA zones, fall and rule engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+vg360-geom = { path = "../vg360-geom" }
+
+[dev-dependencies]
+serde_json.workspace = true

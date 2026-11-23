@@ -2,14 +2,14 @@ name: ci
 on: [push, pull_request]
 jobs:
   core:
-    name: geometry · vision · guard · inference (pure Rust)
+    name: geometry · vision · guard · inference · scene (pure Rust)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: ./scripts/fetch_models.sh
-      - run: cargo test --release -p vg360-geom -p vg360-vision -p vg360-guard -p vg360-infer
+      - run: cargo test --release -p vg360-geom -p vg360-vision -p vg360-guard -p vg360-infer -p vg360-scene
   onnxruntime:
     name: inference on ONNX Runtime (load-dynamic)
     runs-on: ubuntu-latest

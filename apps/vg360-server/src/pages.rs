@@ -411,13 +411,15 @@ pub async fn training(cx: &Cx) -> Result<impl View> {
             <table class="mini">
                 <thead><tr><th>"Test"</th><th>"Checks"</th></tr></thead>
                 <tbody>
-                    <tr><td><code>"golden::notebook_ledger_verifies_in_rust"</code></td><td>"53-entry SHA-256 chain written by Python re-verifies byte-for-byte"</td></tr>
+                    <tr><td><code>"golden::notebook_ledger_verifies_in_rust"</code></td><td>"SHA-256 chain written by Python re-verifies byte-for-byte"</td></tr>
                     <tr><td><code>"golden::notebook_mcc_matches_confusion_matrix"</code></td><td>"Rust MCC = sklearn MCC for every rule; floor matches priority"</td></tr>
                     <tr><td><code>"metrics::notebook_ppe_mcc"</code></td><td>"PPE confusion matrix → 0.8200540091801047"</td></tr>
                     <tr><td><code>"camera::round_trip"</code></td><td>"deck point → pixel → deck point with roll and yaw"</td></tr>
                     <tr><td><code>"policy::moved_needs_hold_then_clears_after_ok_hold"</code></td><td>"camera-guard hold times ported from camera_guard"</td></tr>
                     <tr><td><code>"guard::bumped_camera_is_moved_with_correct_guidance"</code></td><td>"real frames, no OpenCV: known +70 px / −25 px / 3.2° bump recovered (dx 5.47 %, dy −1.98 %, −3.22°)"</td></tr>
                     <tr><td><code>"guard::people_moving_is_not_a_camera_move"</code></td><td>"workers walked around, camera fixed → aligned"</td></tr>
+                    <tr><td><code>"infer::detections_and_ppe_match_python_within_1px"</code></td><td>"YOLOX + 3×3 tiles + PPE vs onnxruntime/cv2: boxes within 0.125 px"</td></tr>
+                    <tr><td><code>"scene::simulated_site_replays_identically"</code></td><td>"600 frames, 8 018 boxes: same tracks, geometry, events, rule alerts, identical ledger"</td></tr>
                     <tr><td><code>"calib::recovers_notebook_selftest_camera"</code></td><td>"8 deck points, ±0.3 px noise → f, height, pitch, yaw, roll (0.23 px, 0.012 m RMS)"</td></tr>
                 </tbody>
             </table>

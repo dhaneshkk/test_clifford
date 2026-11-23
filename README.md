@@ -10,23 +10,27 @@ crates/
   vg360-vision   pure-Rust replacements for every OpenCV call we used (see table below)
   vg360-guard    camera guard (port of camera_guard): aligner, ffmpeg RTSP grabber,
                  moved / blocked / view-lost state machine and technician guidance
+  vg360-scene    per-camera scene: feet on deck + head height, 3-D pose fit (19 cuboids, rotor tilt),
+                 SE(2) motor tracker + Hungarian assignment, CGA zone clearances, fall / intrusion
+                 events, Rule Studio engine (gap tolerance, priority cooldowns, SHA-256 ledger)
   vg360-infer    YOLOX-Nano person detector + PPE classifier: letterbox, grid decode, NMS,
                  full frame + 3×3 tiles, fisheye virtual views; engines: tract (pure Rust) / ONNX Runtime
 apps/
   vg360-server   Topcoat 0.12 operator console + OpenAI-compatible API
 models/          ppe_clifford_folded.onnx (committed); yolox_nano.onnx via scripts/fetch_models.sh (SHA-256 checked)
-scripts/         fetch_models.sh, export_golden.py (Python reference path → testdata/golden)
+scripts/         fetch_models.sh, export_golden.py, export_golden_scene.py (notebook reference path → testdata/golden)
 notebooks/       vg360_clifford_safety_cpu.ipynb (single cell; to be split into training-only in Phase 5)
 lean/            CGA.lean — theorems behind the closed forms (not yet machine-checked in CI)
 testdata/        notebook exports (rules, ledger) and frames used by the golden tests
 ```
 
-## Status — Phase 0 and Phase 1
+## Status — Phases 0–2
 
 | Area | State |
 |---|---|
 | Geometry, zones, MCC, rules, ledger | done, unit + golden tests |
-| Python → Rust interop | the notebook's 53-entry SHA-256 ledger re-verifies in Rust; Rust MCC = sklearn MCC for every rule |
+| Python → Rust interop | the notebook's SHA-256 ledger re-verifies in Rust; Rust MCC = sklearn MCC for every rule |
+| Scene (`vg360-scene`) | the notebook's 60-s simulated site (600 frames, 8 018 boxes) replays identically: same track ids, feet / head / tilt / clearances within 1e-5 (JSON precision), same 101 fall/intrusion events, same 51 rule alerts, byte-identical ledger |
 | OpenCV removal | done for camera_guard and calibration / lens code |
 | Camera guard on real frames | known +70 px / −25 px / 3.2° bump recovered as dx 5.47 %, dy −1.98 %, −3.22° |
 | Deck calibration | 8 points, ±0.3 px noise → f, height, pitch, yaw, roll; 0.23 px / 0.012 m RMS |
@@ -87,7 +91,10 @@ answers deterministically from site state (no LLM), so every number it gives is 
 ## Roadmap
 
 1. ~~`vg360-infer`~~ done.
-2. Remaining geometry in Rust: tracker (Cl(2,0,1) motors), fall pose fit, full rule engine.
+2. ~~Scene in Rust~~ done. The port found a bug in the notebook's motor log (double cover: a track whose
+   heading passed ±180° had its correction negated and drifted away from its person); fixed in the
+   notebook — simulated identities 19 → 15 tracks for 14 people, fall rule MCC 0.713 → 0.794 (now above
+   the P2 floor).
 3. Live camera guard per camera; compose small measured shifts with the ground homography.
 4. Live console: per-camera workers, SSE updates, snapshots, streaming chat completions.
 5. Training-only single-cell notebook (SAM, MCC, ONNX export, golden vectors), Lean build in CI.

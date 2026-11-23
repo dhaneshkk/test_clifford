@@ -13,6 +13,8 @@ crates/
   vg360-scene    per-camera scene: feet on deck + head height, 3-D pose fit (19 cuboids, rotor tilt),
                  SE(2) motor tracker + Hungarian assignment, CGA zone clearances, fall / intrusion
                  events, Rule Studio engine (gap tolerance, priority cooldowns, SHA-256 ledger)
+  vg360-pipeline per-camera worker: camera guard → shift compensation → detection → scene → rules;
+                 runs on an RTSP stream or a file replayed as a camera (spawn_stream)
   vg360-infer    YOLOX-Nano person detector + PPE classifier: letterbox, grid decode, NMS,
                  full frame + 3×3 tiles, fisheye virtual views; engines: tract (pure Rust) / ONNX Runtime
 apps/
@@ -24,7 +26,7 @@ lean/            CGA.lean — theorems behind the closed forms (not yet machine-
 testdata/        notebook exports (rules, ledger) and frames used by the golden tests
 ```
 
-## Status — Phases 0–2
+## Status — Phases 0–3
 
 | Area | State |
 |---|---|
@@ -35,6 +37,7 @@ testdata/        notebook exports (rules, ledger) and frames used by the golden 
 | Camera guard on real frames | known +70 px / −25 px / 3.2° bump recovered as dx 5.47 %, dy −1.98 %, −3.22° |
 | Deck calibration | 8 points, ±0.3 px noise → f, height, pitch, yaw, roll; 0.23 px / 0.012 m RMS |
 | Console | 6 pages on sample data; CAM-05 is measured live by the guard at start-up |
+| Live camera guard + compensation (`vg360-pipeline`) | rig clip knocked mid-run by +32 px / −14 px / 1.5°: analytics continue (mode `Compensated`), people stay on their deck spots (mean error 0.24 m vs 0.85 m uncompensated, 19/21 within 0.5 m), all 4 track ids survive the knock; a 9° / 180 px knock pauses analytics; a covered lens pauses them after the 5 s hold |
 | Inference (`vg360-infer`) | done: boxes match the notebook's Python path (onnxruntime + cv2) within 0.125 px, scores within 0.004, PPE probabilities within 0.0005 — both engines |
 
 ### Inference speed (YOLOX-Nano 416², 1280×720 frame, 2 vCPU sandbox)
@@ -95,7 +98,8 @@ answers deterministically from site state (no LLM), so every number it gives is 
    heading passed ±180° had its correction negated and drifted away from its person); fixed in the
    notebook — simulated identities 19 → 15 tracks for 14 people, fall rule MCC 0.713 → 0.794 (now above
    the P2 floor).
-3. Live camera guard per camera; compose small measured shifts with the ground homography.
+3. ~~Live camera guard + shift compensation~~ done. Limits (≤ 8 % shift, ≤ 5° rotation, ≤ 6 % zoom,
+   ≥ 60 matched points) are configurable per camera (`CompLimits`).
 4. Live console: per-camera workers, SSE updates, snapshots, streaming chat completions.
 5. Training-only single-cell notebook (SAM, MCC, ONNX export, golden vectors), Lean build in CI.
 

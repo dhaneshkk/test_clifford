@@ -2991,6 +2991,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "vg360-pipeline"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "vg360-geom",
+ "vg360-guard",
+ "vg360-infer",
+ "vg360-scene",
+ "vg360-vision",
+]
+
+[[package]]
 name = "vg360-scene"
 version = "0.1.0"
 dependencies = [
@@ -3009,6 +3021,7 @@ dependencies = [
  "topcoat",
  "vg360-geom",
  "vg360-guard",
+ "vg360-pipeline",
  "vg360-vision",
 ]
 

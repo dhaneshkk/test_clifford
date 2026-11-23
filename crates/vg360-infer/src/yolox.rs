@@ -5,7 +5,7 @@ use vg360_vision::img::Gray;
 use crate::engine::{Engine, Result};
 use crate::pre::letterbox;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
 pub struct Det { pub x1: f64, pub y1: f64, pub x2: f64, pub y2: f64, pub score: f64, pub class: usize }
 
 impl Det {

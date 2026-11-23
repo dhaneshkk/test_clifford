@@ -8,6 +8,7 @@ use topcoat::{
 };
 use vg360_geom::ledger::Verify;
 use vg360_guard::{config as gc, policy::Status};
+use vg360_pipeline::Mode;
 
 use crate::state::{Cam, Lens, Site};
 use crate::ui::{Trusted, guard_tone};
@@ -59,7 +60,11 @@ pub async fn overview(cx: &Cx) -> Result<impl View> {
         if let Some(c) = alarms.first() {
             <a class="banner bad" href=(href!(camera, id: c.id))>
                 <strong>(c.id) " · " (c.guard.label())</strong>
-                " — analytics paused on this camera (ground calibration no longer valid). "
+                if c.mode == Mode::Compensated {
+                    " — analytics continue through shift compensation; please re-aim the camera. "
+                } else {
+                    " — analytics paused on this camera (ground calibration no longer valid). "
+                }
                 (c.guidance().join(" · "))
                 <span class="go">"Open guidance →"</span>
             </a>
@@ -158,14 +163,19 @@ pub async fn camera(cx: &Cx) -> Result<impl View> {
                         <p class="okmsg">"Position correct — within " (pct(gc::OK_SHIFT)) " shift, " (gc::OK_ROT) "° rotation."</p>
                     } else {
                         <ol class="guide">for g in &guidance { <li>(g.clone())</li> }</ol>
-                        <p class="note">"Analytics paused: rules on this camera are suspended and alerts are tagged "
-                            <code>"calibration_suspended"</code> " until the view is aligned for " (gc::OK_HOLD) " s."</p>
+                        if c.mode == Mode::Compensated {
+                            <p class="note okline">"Analytics continue: the move is small (≤ 8 % shift, ≤ 5° rotation, ≥ 60 matched points), so detections are mapped back through the measured homography H⁻¹ onto the original deck calibration. Results from this camera carry "
+                                <code>"mode: Compensated"</code> ". The alarm stays until the view is re-aimed and aligned for " (gc::OK_HOLD) " s."</p>
+                        } else {
+                            <p class="note">"Analytics paused: the move is too large to compensate (or the view is blocked / lost). Rules on this camera are suspended until the view is aligned for " (gc::OK_HOLD) " s."</p>
+                        }
                         <div class="btns"><button disabled=(true)>"Re-capture reference"</button><button disabled=(true)>"Recalibrate deck points"</button></div>
                     }
                 </section>
                 <section class="card">
                     <h3>"Ground calibration"</h3>
                     <dl>
+                        <dt>"analytics"</dt><dd>(match c.mode { Mode::Aligned => "running", Mode::Compensated => "running · shift-compensated", Mode::Paused => "paused" })</dd>
                         <dt>"method"</dt><dd>(c.calib_method)</dd>
                         <dt>"mount height"</dt><dd>(format!("{:.1} m", c.height_m))</dd>
                         <dt>"pitch"</dt><dd>(format!("{:.0}°", c.pitch_deg))</dd>
@@ -181,12 +191,12 @@ pub async fn camera(cx: &Cx) -> Result<impl View> {
                     <h3>"Rules on this camera"</h3>
                     <ul class="rl">
                         for (rid, r) in cam_rules {
-                            let pass = r.passes_floor() && c.guard == Status::Ok;
+                            let pass = r.passes_floor() && c.mode != Mode::Paused;
                             <li>
                                 <span class="chip">(rid)</span>
                                 <span>(r.name.clone())</span>
                                 <span class=(class!("pill", "ok" if pass, "warn" if !pass))>
-                                    if c.guard != Status::Ok { "paused" } else if r.passes_floor() { "armed" } else { "shadow" }
+                                    if c.mode == Mode::Paused { "paused" } else if !r.passes_floor() { "shadow" } else if c.mode == Mode::Compensated { "armed · compensated" } else { "armed" }
                                 </span>
                             </li>
                         }

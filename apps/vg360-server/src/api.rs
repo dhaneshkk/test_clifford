@@ -33,7 +33,10 @@ pub fn answer(site: &Site, q: &str) -> String {
     if q.contains("camera") || q.contains("guard") || q.contains("moved") || q.contains("status") {
         for c in &site.cams {
             let mut line = format!("{} {} — {}", c.id, c.name, c.guard.label());
-            if c.guard != Status::Ok { line += &format!(" (analytics paused; {})", c.guidance().join(", ")); }
+            if c.guard != Status::Ok {
+                let mode = match c.mode { vg360_pipeline::Mode::Compensated => "analytics continue, shift-compensated", vg360_pipeline::Mode::Paused => "analytics paused", vg360_pipeline::Mode::Aligned => "analytics running" };
+                line += &format!(" ({mode}; {})", c.guidance().join(", "));
+            }
             out.push(line);
         }
     }
@@ -89,7 +92,7 @@ pub async fn ledger(cx: &Cx) -> Result<Json<Value>> {
 pub async fn cameras(cx: &Cx) -> Result<Json<Value>> {
     let site = context::<Site>(cx);
     Ok(Json(json!({"cameras": site.cams.iter().map(|c| json!({
-        "id": c.id, "name": c.name, "guard": c.guard, "analytics_enabled": c.guard.analytics_enabled(),
+        "id": c.id, "name": c.name, "guard": c.guard, "analytics": c.mode,
         "pose": c.pose, "guidance": c.guidance(), "rules": c.rules, "url_env": c.env_var()
     })).collect::<Vec<_>>()})))
 }

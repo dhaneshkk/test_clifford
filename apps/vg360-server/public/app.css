@@ -139,3 +139,4 @@ td.num { font-variant-numeric: tabular-nums; font-family: var(--mono); white-spa
 .plan .camdot.bad { fill: var(--bad); }
 .plan .lbl { font-size: 14px; }
 .plan .cam { font-size: 14px; }
+.note.okline { color: var(--ok); }

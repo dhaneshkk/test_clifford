@@ -19,6 +19,7 @@ pub struct Grabber {
     pub connected: AtomicBool,
     running: AtomicBool,
     child: Mutex<Option<Child>>,
+    count: std::sync::atomic::AtomicU64,
 }
 
 impl Grabber {
@@ -29,6 +30,7 @@ impl Grabber {
             connected: AtomicBool::new(false),
             running: AtomicBool::new(true),
             child: Mutex::new(None),
+            count: std::sync::atomic::AtomicU64::new(0),
         });
         let (gc, url) = (g.clone(), url.to_string());
         thread::spawn(move || gc.run(&url));
@@ -39,11 +41,18 @@ impl Grabber {
         let ffmpeg = std::env::var("FFMPEG").unwrap_or_else(|_| "ffmpeg".into());
         let frame_len = self.width * self.height * 3;
         while self.running.load(Ordering::Relaxed) {
+            // RTSP cameras: low-latency TCP. Anything else (a recorded file) is replayed in real time
+            // and looped, so it behaves like a live camera (demo / soak testing).
+            let mut args: Vec<String> = vec!["-loglevel".into(), "error".into()];
+            if url.starts_with("rtsp://") || url.starts_with("rtsps://") {
+                args.extend(["-rtsp_transport", "tcp", "-fflags", "nobuffer", "-flags", "low_delay"].map(String::from));
+            } else {
+                args.extend(["-re", "-stream_loop", "-1"].map(String::from));
+            }
+            args.extend(["-i".into(), url.into(), "-an".into(), "-vf".into(), format!("scale={}:{}", self.width, self.height),
+                         "-f".into(), "rawvideo".into(), "-pix_fmt".into(), "bgr24".into(), "-".into()]);
             let spawned = Command::new(&ffmpeg)
-                .args(["-loglevel", "error", "-rtsp_transport", "tcp", "-fflags", "nobuffer",
-                       "-flags", "low_delay", "-i", url, "-an",
-                       "-vf", &format!("scale={}:{}", self.width, self.height),
-                       "-f", "rawvideo", "-pix_fmt", "bgr24", "-"])
+                .args(&args)
                 .stdin(Stdio::null())
                 .stdout(Stdio::piped())
                 .stderr(if std::env::var_os("VG360_GUARD_DEBUG").is_some() { Stdio::inherit() } else { Stdio::null() })
@@ -63,6 +72,7 @@ impl Grabber {
                 if out.read_exact(&mut buf).is_err() || !self.running.load(Ordering::Relaxed) { break; }
                 self.connected.store(true, Ordering::Relaxed);
                 *self.latest.lock().unwrap() = Some(Arc::new(buf));
+                self.count.fetch_add(1, Ordering::Relaxed);
             }
             self.connected.store(false, Ordering::Relaxed);
             if let Some(mut c) = self.child.lock().unwrap().take() {
@@ -72,6 +82,9 @@ impl Grabber {
             thread::sleep(Duration::from_secs(1)); // reconnect
         }
     }
+
+    /// Frames received since start (a counter, so callers can tell a new frame from the last one).
+    pub fn frames(&self) -> u64 { self.count.load(Ordering::Relaxed) }
 
     /// Newest frame (rotated 180° if configured).
     pub fn read(&self) -> Option<Bgr> {

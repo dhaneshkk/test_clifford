@@ -14,3 +14,4 @@ serde_json.workspace = true
 vg360-geom = { path = "../../crates/vg360-geom" }
 vg360-guard = { path = "../../crates/vg360-guard" }
 vg360-vision = { path = "../../crates/vg360-vision" }
+vg360-pipeline = { path = "../../crates/vg360-pipeline", default-features = false }

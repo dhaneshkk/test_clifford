@@ -38,3 +38,18 @@ fn black_frame_is_blocked() {
     let m = a.measure(&Bgr::new(1280, 720));
     assert!(m.blocked && !m.ok);
 }
+
+#[test]
+fn grabber_reads_a_looped_file_like_a_camera() {
+    if std::process::Command::new(std::env::var("FFMPEG").unwrap_or("ffmpeg".into())).arg("-version").output().is_err() {
+        eprintln!("ffmpeg not installed — skipped"); return;
+    }
+    let path = format!("{}/../../testdata/clip/clip.mp4", env!("CARGO_MANIFEST_DIR"));
+    let g = vg360_guard::grabber::Grabber::start(&path, 640, 360, false);
+    let t0 = std::time::Instant::now();
+    while g.frames() < 5 && t0.elapsed().as_secs() < 20 { std::thread::sleep(std::time::Duration::from_millis(50)); }
+    let f = g.read().expect("a frame");
+    g.stop();
+    assert_eq!((f.w, f.h, f.data.len()), (640, 360, 640 * 360 * 3));
+    assert!(f.to_gray().mean_std().1 > 10.0, "frame is not blank");
+}

@@ -7,6 +7,7 @@ use serde::Serialize;
 use vg360_geom::ledger::{Entry, Ledger, Verify};
 use vg360_geom::rules::RuleRecord;
 use vg360_guard::aligner::Aligner;
+use vg360_pipeline::{CompLimits, Mode, compensation_mode};
 use vg360_guard::policy::{self, Guard, Observation, Pose, Status};
 use vg360_vision::img::Bgr;
 
@@ -27,6 +28,8 @@ pub struct Cam {
     pub calib_rms_m: f64,
     pub calib_method: &'static str,
     pub guard: Status,
+    /// analytics mode decided from the guard measurement (aligned / compensated / paused)
+    pub mode: Mode,
     pub pose: Pose,
     /// reference-frame corners in the live image (camera-guard "correct view is here" box)
     pub ref_quad: Option<[[f64; 2]; 4]>,
@@ -80,7 +83,7 @@ impl Site {
         let home = Pose { dx: 0.0, dy: 0.0, angle: 0.0, scale: 1.0, corner: 0.0 };
         let cam = |id, name, area, frame, h, p, f, rules, xy, dir| Cam {
             id, name, area, frame, reference: None, lens: Lens::Pinhole, height_m: h, pitch_deg: p, hfov_deg: f,
-            calib_rms_m: 0.007, calib_method: "8 deck points · solvePnP", guard: Status::Ok, pose: home,
+            calib_rms_m: 0.007, calib_method: "8 deck points · DLT + LM", guard: Status::Ok, mode: Mode::Aligned, pose: home,
             ref_quad: None, inliers: 212, fps: 5.0, infer_ms: 41.0, rules, plan_xy: xy, plan_dir: dir,
         };
         let cams = vec![
@@ -94,7 +97,8 @@ impl Site {
                 &["lift", "ppe"], [40.0, -22.0], 300.0) },
             Cam {
                 reference: Some("/samples/cam5_reference.jpg"), guard: status, pose: m.pose, ref_quad: m.ok.then_some(m.boxq),
-                inliers: m.inliers, calib_method: "suspended — camera moved",
+                inliers: m.inliers, mode: compensation_mode(&m, &CompLimits::default()),
+                calib_method: "8 deck points · DLT + LM (through measured shift)",
                 ..cam("CAM-05", "Mud tanks · east", "Mud tanks", "/samples/cam5_moved.jpg", 10.0, 25.0, 70.0,
                     &["edge", "red"], [42.0, 4.0], 265.0)
             },

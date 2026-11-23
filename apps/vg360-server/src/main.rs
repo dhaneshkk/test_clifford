@@ -3,7 +3,8 @@
 //! Server-rendered with Topcoat; no client framework. Pages:
 //! `/` overview · `/cameras/{id}` camera detail + camera guard · `/rules` MCC gates + ledger ·
 //! `/twin` site plan · `/training` models · `/settings` cameras.
-//! API: `/v1/models`, `/v1/chat/completions` (OpenAI-compatible), `/v1/rules`, `/v1/ledger`, `/v1/cameras`.
+//! API: `/v1/models`, `/v1/chat/completions` (OpenAI-compatible), `/v1/rules`, `/v1/ledger`, `/v1/cameras`,
+//! `/api/twin` (GET / POST from the Rig Twin editor), `/api/rule-studio`, `/api/evidence`.
 mod api;
 mod pages;
 mod state;
@@ -26,6 +27,10 @@ pub fn router(root: &str) -> Router {
         .route(api::rules)
         .route(api::ledger)
         .route(api::cameras)
+        .route(api::twin_get)
+        .route(api::twin_apply)
+        .route(api::rule_studio)
+        .route(api::evidence)
         .public_dir(format!("{root}/public"))
         .build()
 }

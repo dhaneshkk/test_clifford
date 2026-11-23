@@ -5,7 +5,10 @@
 use vg360_geom::camera::Camera;
 use vg360_infer::yolox::Yolox;
 use vg360_pipeline::{CameraWorker, Mode, WorkerCfg};
-use vg360_scene::{rules::{Ctx, RuleEngine, default_rules}, scene::Scene, zones::default_zones};
+use std::sync::Arc;
+use vg360_pipeline::RuleSet;
+use vg360_rules::{Deployed, Signals, SiteMap};
+use vg360_scene::{scene::Scene, zones::default_zones};
 use vg360_vision::img::Bgr;
 
 fn root() -> String { format!("{}/../..", env!("CARGO_MANIFEST_DIR")) }
@@ -14,9 +17,13 @@ fn camera() -> Camera {
     // rig demo preset: 10 m mast, 25° down, 70° horizontal field of view, 1280×720
     Camera { f_px: 640.0 / 35f64.to_radians().tan(), cx: 640.0, cy: 360.0, height_m: 10.0, pitch_deg: 25.0, yaw_deg: 0.0, roll_deg: 0.0, x0: 0.0, y0: 0.0 }
 }
+fn rules() -> Arc<RuleSet> {
+    let dep = Deployed::load(&std::fs::read_to_string(format!("{}/config/vg360_rules.draft.json", root())).unwrap()).unwrap();
+    Arc::new(RuleSet::new(dep, SiteMap::rig_default(), None))
+}
 fn worker(tiles: usize) -> CameraWorker {
     let det = Yolox::load_tract(format!("{}/models/yolox_nano.onnx", root()), 416).expect("run scripts/fetch_models.sh");
-    let mut w = CameraWorker::new("CAM-T", det, None, Scene::new(camera(), default_zones()), RuleEngine::new(default_rules(10.0), 0.5),
+    let mut w = CameraWorker::new("CAM-T", det, None, Scene::new(camera(), default_zones()), rules(),
                                   WorkerCfg { guard_every: 1, tiles, ..Default::default() });
     let n = w.set_reference(&frame(0), &[frame(1), frame(2)]);
     assert!(n >= 80, "{n} reference points");
@@ -29,7 +36,7 @@ fn knock(f: &Bgr, deg: f64, dx: f64, dy: f64) -> Bgr {
     let h = [[c, s, cx - c * cx - s * cy + dx], [-s, c, cy + s * cx - c * cy + dy], [0.0, 0.0, 1.0]];
     f.warp_perspective(&h, f.w, f.h, [30, 30, 30])
 }
-const CTX: Ctx = Ctx { suspended: false, pipe_handling: false };
+fn sig() -> Signals { Signals::default() }
 
 #[test]
 fn small_knock_is_compensated_and_keeps_people_on_the_same_deck_spots() {
@@ -41,11 +48,11 @@ fn small_knock_is_compensated_and_keeps_people_on_the_same_deck_spots() {
     for i in 3..16 {
         let t = i as f64 * 0.1;
         let f = frame(i);
-        let ra = a.process(&f, t, 0.1, &CTX).unwrap();
+        let ra = a.process(&f, t, 0.1, &sig()).unwrap();
         let knocked = i >= 8;
         let fb = if knocked { knock(&f, 1.5, 32.0, -14.0) } else { f };
         let fb_h = fb.h as f64;
-        let rb = b.process(&fb, t, 0.1, &CTX).unwrap();
+        let rb = b.process(&fb, t, 0.1, &sig()).unwrap();
         for r in rb.recs.iter().flatten() { if knocked { ids_after.insert(r.track); } else { ids_before.insert(r.track); } }
         if !knocked { assert_eq!(rb.mode, Mode::Aligned, "frame {i}"); continue; }
         assert_eq!(rb.mode, Mode::Compensated, "frame {i}: pose {:?}", rb.pose);
@@ -79,7 +86,7 @@ fn small_knock_is_compensated_and_keeps_people_on_the_same_deck_spots() {
 #[test]
 fn large_knock_pauses_analytics() {
     let mut w = worker(1);
-    let r = w.process(&knock(&frame(5), 9.0, 180.0, 60.0), 0.5, 0.1, &CTX).unwrap();
+    let r = w.process(&knock(&frame(5), 9.0, 180.0, 60.0), 0.5, 0.1, &sig()).unwrap();
     eprintln!("large knock: mode {:?}, pose {:?}", r.mode, r.pose);
     assert_eq!(r.mode, Mode::Paused);
     assert!(r.recs.is_empty() && r.alerts.is_empty());
@@ -92,7 +99,7 @@ fn covered_lens_pauses_after_the_hold_time() {
     let mut first_pause = None;
     for k in 0..70 {
         let t = 1.0 + k as f64 * 0.1;
-        let r = w.process(&black, t, 0.1, &CTX).unwrap();
+        let r = w.process(&black, t, 0.1, &sig()).unwrap();
         if r.mode == Mode::Paused && first_pause.is_none() { first_pause = Some(t - 1.0); }
     }
     let p = first_pause.expect("never paused");
@@ -104,9 +111,9 @@ fn covered_lens_pauses_after_the_hold_time() {
 fn stream_worker_runs_on_a_file_replayed_as_a_camera() {
     if std::process::Command::new("ffmpeg").arg("-version").output().is_err() { eprintln!("ffmpeg not installed — skipped"); return; }
     let det = Yolox::load_tract(format!("{}/models/yolox_nano.onnx", root()), 416).unwrap();
-    let w = CameraWorker::new("CAM-S", det, None, Scene::new(camera(), default_zones()), RuleEngine::new(default_rules(10.0), 0.5),
+    let w = CameraWorker::new("CAM-S", det, None, Scene::new(camera(), default_zones()), rules(),
                               WorkerCfg { tiles: 1, ..Default::default() });
-    let rx = vg360_pipeline::spawn_stream(w, format!("{}/testdata/clip/clip.mp4", root()), 1280, 720, 10.0, 3, |_| CTX);
+    let rx = vg360_pipeline::spawn_stream(w, format!("{}/testdata/clip/clip.mp4", root()), 1280, 720, 10.0, 3, |_| sig());
     let got: Vec<_> = rx.iter().take(5).map(|r| r.unwrap()).collect();
     eprintln!("stream: {} results, modes {:?}, people {:?}", got.len(), got.iter().map(|r| r.mode).collect::<Vec<_>>(),
               got.iter().map(|r| r.recs.iter().flatten().count()).collect::<Vec<_>>());

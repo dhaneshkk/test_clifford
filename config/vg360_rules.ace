@@ -1,0 +1,5 @@
+LIFT: If a worker is under a suspended-load for at least 3 seconds then VisionGuard raises a critical line-of-fire-alert for the worker.
+RED: If a worker is in Red-Zone and Red-Zone has a pipe-handling then VisionGuard raises a critical line-of-fire-alert for the worker.
+EDGE: If a worker is near Deck-Edge then VisionGuard raises a critical working-at-height-alert for the worker.
+FALL: If a fallen-person is in Deck for at least 2 seconds then VisionGuard raises a high person-down-alert for the fallen-person.
+PPE: If a worker is in Deck and does not wear a helmet for at least 2 seconds then VisionGuard raises a critical ppe-alert for the worker.

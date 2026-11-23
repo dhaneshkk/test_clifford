@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VG360 Rule Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+/* VOICE work: a shipped HSE product shown to operators, contractors and investors
+   IDEA the control-room console of a multi-site safety system, rig signage lettering, safety orange
+   PICTURE per tab: weekly alert chart, rule editor with live MCC, rule-to-evidence timeline, anonymised deck scene, printable evidence report
+   COLOUR white or near-black ground, ink, deep steel header band, safety orange accent, green/amber/red for status
+   TYPE Barlow Condensed for titles and figures, Barlow for text, JetBrains Mono for logic and hashes
+   LAYOUT steel band with title, site picker and tabs; two columns per tab on a laptop; one column below 900px */
+:root{color-scheme:light dark;--bg:light-dark(#ffffff,#0f1214);--ink:light-dark(#14171a,#eef1f3);--mute:light-dark(#56616b,#9ba7b1);--line:light-dark(#dde2e5,#283035);--panel:light-dark(#f3f5f6,#161b1e);--acc:light-dark(#e2531a,#ff6a2b);--ok:light-dark(#1d7a4c,#4cc08a);--warn:light-dark(#a86c12,#f0b44c);--bad:light-dark(#c0341a,#ff6b50);--steel:#14303c;--steel2:light-dark(#1e4352,#4f8ca3);--c3:light-dark(#8a9aa4,#6b7b85);--c4:light-dark(#c9b27a,#8f7f55)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.55 Barlow,system-ui,sans-serif;overflow-x:clip}
+h1,h2,h3{font-family:"Barlow Condensed",Barlow,sans-serif;line-height:1.05;letter-spacing:-.01em;margin:0}
+code,.mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:13.5px}
+.band{padding-block:clamp(20px,3vw,40px);padding-left:max(4vw,16px);padding-right:max(4vw,16px)}
+.top{background:var(--steel);color:#eef4f6;padding-bottom:0}
+.tophead{display:flex;flex-wrap:wrap;gap:14px 28px;align-items:end;justify-content:space-between}
+.top h1{font-size:clamp(32px,4.4vw,48px)}
+.top p{margin:6px 0 0;color:#b9cdd5;max-width:64ch}
+.sitepick label{color:#b9cdd5}
+.sitepick select{min-width:240px;background:#0d222b;color:#fff;border-color:#2f5666}
+.nbload{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.nbload .btn.ghost{color:#eef4f6;border-color:#2f5666;display:inline-flex;align-items:center}
+#nbstat{font-size:14px;color:#b9cdd5;max-width:46ch}
+.b-nb{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc)}
+.tabs{display:flex;flex-wrap:wrap;gap:2px;margin-top:18px}
+.tabs button{font:600 16px Barlow,sans-serif;color:#cfe0e6;background:transparent;border:0;border-radius:8px 8px 0 0;padding:12px 16px;min-height:44px;cursor:pointer}
+.tabs button:hover{color:#fff}
+.tabs button[aria-selected=true]{background:var(--bg);color:var(--ink)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+main{max-width:1280px;margin:0 auto}
+.grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:24px;align-items:start}
+.grid.even{grid-template-columns:minmax(0,7fr) minmax(0,5fr)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}
+.lead{color:var(--mute);margin:0 0 16px;max-width:75ch}
+h2{font-size:clamp(28px,3.2vw,38px);margin-bottom:6px;text-wrap:balance}
+h3{font-size:22px;margin:0 0 10px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.chip{font:500 14px Barlow,sans-serif;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:999px;padding:8px 14px;min-height:40px;cursor:pointer}
+.chip[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.sites{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:22px}
+.sc{text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;color:var(--ink);font:inherit;cursor:pointer;min-height:44px}
+.sc[aria-pressed=true]{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
+.sc b{display:block;font:700 21px "Barlow Condensed",sans-serif}
+.sc small{display:block;color:var(--mute);font-size:13.5px;margin-bottom:8px}
+.sc .k{display:grid;grid-template-columns:1fr auto;font-size:14px;gap:2px 8px}
+.sc .k span:nth-child(even){text-align:right;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.up{color:var(--bad)}.down{color:var(--ok)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:4px 0 18px}
+.kpi{border-top:3px solid var(--ink);padding-top:8px}
+.kpi .big{font-size:clamp(36px,4vw,48px)}
+.kpi span{font-size:14px;color:var(--mute)}
+.chart{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:8px;align-items:end;height:230px;border-bottom:1px solid var(--ink);padding-top:22px}
+.col{display:flex;flex-direction:column-reverse;height:100%;position:relative}
+.col i{display:block;width:100%}
+.col em{position:absolute;left:0;right:0;text-align:center;font-style:normal;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+.xl{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:8px;font-size:13px;color:var(--mute);text-align:center;margin-top:6px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:14px;margin-top:12px}
+.legend span::before{content:"";display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--c);margin-right:6px;vertical-align:-1px}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th{text-align:left;font-weight:600;color:var(--mute);font-size:14px;padding:8px 6px;border-bottom:1px solid var(--ink)}
+td{padding:9px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.scroll{overflow-x:auto}
+.pill{font:600 13px Barlow,sans-serif;border-radius:6px;padding:2px 8px;white-space:nowrap}
+.p-open{background:color-mix(in srgb,var(--bad) 15%,transparent);color:var(--bad)}
+.p-closed{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+.link{background:none;border:0;color:var(--acc);font:600 15px Barlow,sans-serif;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:3px}
+.rlist{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.rlist button{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;text-align:left;background:transparent;border:0;border-bottom:1px solid var(--line);color:var(--ink);font:500 16px Barlow,sans-serif;padding:11px 6px;min-height:52px;cursor:pointer}
+.rlist button[aria-current=true]{background:color-mix(in srgb,var(--acc) 12%,transparent);box-shadow:inset 4px 0 0 var(--acc)}
+.rlist small{display:block;color:var(--mute);font-size:13px}
+.badge{font:600 13px Barlow,sans-serif;border-radius:6px;padding:3px 8px;white-space:nowrap}
+.b-strong{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.b-partial{background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--warn)}
+.b-needs{background:color-mix(in srgb,var(--mute) 20%,transparent);color:var(--mute)}
+.b-custom{background:color-mix(in srgb,var(--steel2) 22%,transparent);color:var(--steel2)}
+.params{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:14px 0}
+label{display:block;font-size:14px;color:var(--mute)}
+input,select{display:block;width:100%;font:16px Barlow,sans-serif;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;min-height:44px;margin-top:4px}
+.english{font-size:19px;line-height:1.5;background:var(--bg);border:1px solid var(--line);border-left:4px solid var(--acc);border-radius:8px;padding:14px 16px;margin:0}
+.english b{color:var(--acc);font-weight:600}
+pre{overflow-x:auto;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin:8px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.lbl{font:600 14px Barlow,sans-serif;color:var(--mute);margin:16px 0 4px}
+.val{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:18px;align-items:center;margin-top:8px}
+.cm{display:grid;grid-template-columns:auto 1fr 1fr;gap:4px;font-size:14px}
+.cm div{padding:8px;border-radius:6px;text-align:right;font-variant-numeric:tabular-nums}
+.cm .h{color:var(--mute);text-align:center;padding:4px}
+.cm .g{background:color-mix(in srgb,var(--ok) 16%,transparent)}
+.cm .r{background:color-mix(in srgb,var(--bad) 14%,transparent)}
+.big{font:700 clamp(44px,6vw,64px)/1 "Barlow Condensed",sans-serif}
+.meter{height:12px;background:var(--line);border-radius:6px;overflow:hidden;margin:8px 0 6px}
+.meter i{display:block;height:100%;background:var(--acc)}
+.note{font-size:13.5px;color:var(--mute);margin:8px 0 0}
+.btn{font:600 16px Barlow,sans-serif;background:var(--acc);color:#fff;border:0;border-radius:8px;padding:10px 18px;min-height:44px;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:14px}
+.toast{font-size:14px;color:var(--ok)}
+.sw{display:flex;gap:10px;align-items:center;font-size:15px;color:var(--ink);margin-top:12px;cursor:pointer}
+.sw input{width:22px;height:22px;min-height:0;margin:0;accent-color:var(--acc)}
+.pipe{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));margin:6px 0 20px}
+.st{padding:12px 14px 12px 18px;background:var(--panel);border:1px solid var(--line);margin-right:-1px}
+.st:first-child{border-radius:10px 0 0 10px}.st:last-child{border-radius:0 10px 10px 0}
+.st b{display:block;font:700 19px "Barlow Condensed",sans-serif}
+.st span{font-size:13.5px;color:var(--mute)}
+.st.on{background:var(--steel);color:#fff;border-color:var(--steel)}
+.st.on span{color:#cfe0e6}
+.st.fire{background:var(--acc);border-color:var(--acc);color:#fff}
+.st.fire span{color:#fff}
+.tl{display:grid;grid-template-columns:8.5em minmax(0,1fr);gap:6px 10px;align-items:center;font-size:14px}
+.cells{display:grid;grid-template-columns:repeat(20,minmax(0,1fr));gap:2px}
+.cells i{height:22px;border-radius:3px;background:var(--line)}
+.cells i.y{background:var(--steel2)}.cells i.p{background:var(--warn)}.cells i.a{background:var(--acc)}
+.cells i.now{outline:2px solid var(--ink);outline-offset:1px}
+input[type=range]{accent-color:var(--acc);padding:0;border:0;background:transparent}
+.preds td:last-child{text-align:right;white-space:nowrap;font-weight:600}
+.yes{color:var(--ok)}.no{color:var(--mute)}
+.decision{margin-top:14px;padding:14px;border-radius:10px;border:1px solid var(--line);background:var(--bg)}
+.decision.fire{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 12%,var(--bg))}
+.ledger{list-style:none;margin:0;padding:0}
+.ledger li{border-bottom:1px solid var(--line);padding:10px 0;font-size:14.5px}
+.ledger li.new{animation:in .6s ease-out}
+@keyframes in{from{background:color-mix(in srgb,var(--acc) 25%,transparent)}to{background:transparent}}
+.ledger .mono{color:var(--mute);font-size:12.5px;display:block;overflow-wrap:anywhere}
+.caveat{border-left:4px solid var(--warn);background:color-mix(in srgb,var(--warn) 10%,transparent);padding:12px 14px;border-radius:0 8px 8px 0;margin-top:16px;font-size:15px}
+.fig{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:#9fc4d6;aspect-ratio:16/10}
+.fig svg{position:absolute;inset:0;width:100%;height:100%}
+.toggles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-top:12px}
+.tg{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:8px 12px;min-height:44px;background:var(--bg);color:var(--ink);font-size:15px;cursor:pointer}
+.tg input{width:20px;height:20px;min-height:0;margin:0;accent-color:var(--acc);flex:none}
+.cliplist{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-bottom:12px}
+.cl{text-align:left;font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;cursor:pointer;min-height:44px}
+.cl[aria-pressed=true]{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
+.cl b{display:block;font-size:15px}.cl small{color:var(--mute);font-size:13px}
+.clip dl{display:grid;grid-template-columns:8em minmax(0,1fr);gap:6px 12px;margin:0 0 12px;font-size:15px}
+.clip dt{color:var(--mute)}.clip dd{margin:0}
+.gate{list-style:none;margin:8px 0;padding:0}
+.gate li{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line);font-size:15px}
+.gate .mk{flex:none;width:22px;font-weight:700}
+.status{margin-top:12px;padding:12px 14px;border-radius:8px;font-weight:600}
+.status.go{background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}
+.status.stop{background:color-mix(in srgb,var(--bad) 13%,transparent);color:var(--bad)}
+textarea{width:100%;min-height:150px;font:15px/1.5 Barlow,sans-serif;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:8px}
+.report{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:clamp(18px,3vw,36px);max-width:980px}
+.report h2{font-size:clamp(28px,3.4vw,40px)}
+.report .meta{color:var(--mute);font-size:14.5px;margin:6px 0 18px}
+.report .sum{font-size:17.5px;max-width:72ch}
+.okline{color:var(--ok);font-weight:600}
+.sample{font-size:13px;color:var(--mute);margin-top:22px}
+[hidden]{display:none!important}
+@media(max-width:900px){.grid,.grid.even{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:700px){.pipe{grid-template-columns:minmax(0,1fr)}.st{margin:0 0 -1px}.st:first-child{border-radius:10px 10px 0 0}.st:last-child{border-radius:0 0 10px 10px}}
+@media(max-width:600px){.val{grid-template-columns:minmax(0,1fr)}.tl{grid-template-columns:minmax(0,1fr)}.tabs button{padding:10px 11px;font-size:15px}.clip dl{grid-template-columns:minmax(0,1fr)}.sitepick select{min-width:0}.chart{height:180px;gap:4px}.xl{gap:4px}table{font-size:13.5px}.stack thead{display:none}.stack tr{display:grid;padding-block:8px;border-bottom:1px solid var(--line)}.stack td{display:flex;justify-content:space-between;gap:12px;border:0;padding:3px 0;text-align:right}.stack td::before{content:attr(data-l);color:var(--mute);text-align:left}}
+@media(prefers-reduced-motion:reduce){.ledger li.new{animation:none}}
+</style>
+</head>
+<body>
+<header class="top band">
+  <div class="tophead">
+    <div>
+      <h1>VG360 Rule Studio</h1>
+      <p>Five sites, one rule library, one evidence ledger. Shows the rule library, the rule engine, toolbox clips and the monthly evidence report.</p>
+    </div>
+    <div class="sitepick"><label for="site">Site</label><select id="site"></select>
+      <div class="nbload"><label class="btn ghost" for="nbfile" tabindex="0">Load notebook results</label><input type="file" id="nbfile" accept=".json,application/json" hidden><button class="btn ghost" id="nbdemo">Use latest notebook run</button></div>
+      <div id="nbstat" aria-live="polite"></div></div>
+  </div>
+  <nav class="tabs" aria-label="Sections">
+    <button id="t-overview" data-v="overview">Overview</button>
+    <button id="t-rules" data-v="rules">Rule library</button>
+    <button id="t-engine" data-v="engine">Rule engine</button>
+    <button id="t-clips" data-v="clips">Toolbox clips</button>
+    <button id="t-report" data-v="report">Evidence report</button>
+  </nav>
+</header>
+<main>
+
+<section class="band" id="v-overview">
+  <div class="sites" id="sitecards"></div>
+  <h2 id="ovTitle"></h2>
+  <p class="lead" id="ovLead"></p>
+  <div class="kpis" id="kpis"></div>
+  <div class="grid even">
+    <div class="panel">
+      <h3>Alerts per week, by rule</h3>
+      <div class="chart" id="chart"></div>
+      <div class="xl" id="xl"></div>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="panel">
+      <h3>Latest alerts</h3>
+      <div class="scroll"><table class="stack" id="alerts"></table></div>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="v-rules" hidden>
+  <h2 id="rlTitle"></h2>
+  <p class="lead">Templates follow hazards H01–H10 from the offshore field notes. Pick one, set this site's details, and see the rule in controlled English, its formal-logic version and its MCC against the acceptance floor for its priority. You can also build a new rule.</p>
+  <div class="grid">
+    <div>
+      <div class="chips" id="packs"></div>
+      <ul class="rlist" id="rlist"></ul>
+      <div class="row"><button class="btn ghost" id="newRule">Build a new rule</button></div>
+      <p class="note">Green: video covers the rule well. Amber: video covers part of it. Grey: needs permit-to-work or control-system data. Blue: a rule built here.</p>
+    </div>
+    <div class="panel" id="detail"></div>
+  </div>
+</section>
+
+<section class="band" id="v-engine" hidden>
+  <h2>From rule to evidence, step by step</h2>
+  <p class="lead" id="enLead"></p>
+  <div class="pipe">
+    <div class="st" data-s="0"><b>Controlled English</b><span>Written by the HSE manager</span></div>
+    <div class="st" data-s="1"><b>Formal logic</b><span>Translated automatically</span></div>
+    <div class="st" data-s="2"><b>Detections</b><span>Edge model, CPU only</span></div>
+    <div class="st" data-s="3"><b>Decision</b><span>Rule checked each second</span></div>
+    <div class="st" data-s="4"><b>Evidence ledger</b><span>Alert linked to its clip</span></div>
+  </div>
+  <div class="grid">
+    <div class="panel">
+      <h3>Timeline</h3>
+      <div class="tl" id="tl"></div>
+      <label for="tsl" style="margin-top:14px">Time: <span id="tval" class="mono"></span></label>
+      <input type="range" id="tsl" min="0" max="19" value="12">
+      <div class="params" style="margin:6px 0 0"><div><label for="thr">Seconds in zone before alert</label><select id="thr"><option>2</option><option selected>3</option><option>5</option><option>8</option></select></div></div>
+      <table class="preds" id="preds"></table>
+      <div class="decision" id="dec"></div>
+    </div>
+    <div>
+      <div class="panel">
+        <h3>Evidence ledger</h3>
+        <ul class="ledger" id="ledger"></ul>
+        <p class="note">Each entry stores the hash of the one before it, so any later change breaks the chain. The hashes here come from a short demo function, not the production cryptography.</p>
+        <div class="row"><button class="btn ghost" id="tamper">Edit an old entry</button><span id="chk" class="toast"></span></div>
+      </div>
+      <div class="panel" style="margin-top:16px" id="nbpanel" hidden>
+        <h3>Notebook evidence ledger (SHA-256)</h3>
+        <p class="note" id="nbmeta"></p>
+        <ul class="ledger" id="nbledger"></ul>
+        <div class="row"><button class="btn ghost" id="nbverify">Verify chain</button><button class="btn ghost" id="nbtamper">Edit an old entry</button><span id="nbchk" class="toast"></span></div>
+      </div>
+      <div class="panel" style="margin-top:16px">
+        <h3>Properties stated about the logic</h3>
+        <pre><code>-- H01: a tracked person in the drop-zone for N frames always alerts
+theorem h01_fires (p : Track) (t : Frame) :
+  loadMoving t → (∀ k &lt; N, inDropZone p (t - k)) → alert .H01 p t
+
+-- Debouncing never suppresses a P1 alert
+theorem debounce_keeps_p1 (r : Rule) :
+  r.priority = .P1 → alert r d t → emitted (debounce r d) t
+
+-- Every alert has a ledger entry
+theorem alert_has_evidence :
+  alert r d t → ∃ e ∈ ledger, e.rule = r.id ∧ e.time = t</code></pre>
+        <p class="note">Illustrative Lean 4 statements based on the examples in the field notes. The notebook's <code>CGA.lean</code> now states and proves <code>debounce_keeps_p1</code> and <code>alert_has_evidence</code> over its own rule-engine model; they haven't been machine-checked yet (set <code>CFG.run_lean = True</code> in Colab).</p>
+        <div class="caveat"><b>What the proofs don't cover.</b> They show the rule logic is right given the detections. They don't show the detections are right, so each rule also shows its measured detection quality: MCC <b id="engMcc"></b> for this rule on <span id="engSite"></span> validation clips.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="v-clips" hidden>
+  <h2 id="clTitle"></h2>
+  <p class="lead">Turn near-misses into training material. Every identifying detail has to be removed, and the release rules decide where each clip can go.</p>
+  <div class="cliplist" id="cliplist"></div>
+  <div class="grid">
+    <div>
+      <div class="fig"><svg id="scene" viewBox="0 0 640 400" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Drawing of the near-miss scene"></svg></div>
+      <div class="toggles" id="toggles"></div>
+    </div>
+    <div class="panel clip">
+      <h3 id="cTitle"></h3>
+      <dl id="cMeta"></dl>
+      <div class="lbl">Where can this clip go?</div>
+      <div class="chips" id="mode">
+        <button class="chip" data-m="internal">This customer's toolbox talks</button>
+        <button class="chip" data-m="shared">Shared training library</button>
+      </div>
+      <ul class="gate" id="gate"></ul>
+      <div class="toggles" id="checks"></div>
+      <div class="status" id="status"></div>
+      <div class="lbl">Toolbox talk text</div>
+      <textarea id="talk" readonly aria-label="Toolbox talk text"></textarea>
+      <div class="row"><button class="btn" id="copy">Copy text</button><span class="toast" id="copied"></span></div>
+    </div>
+  </div>
+  <p class="sample">Legal review needed: this demo doesn't settle data rights or consent. Have counsel in KSA and the UAE review them before any footage leaves the customer that recorded it.</p>
+</section>
+
+<section class="band" id="v-report" hidden>
+  <div class="chips" id="periods"></div>
+  <article class="report" id="report"></article>
+  <div class="row"><button class="btn" id="copyRep">Copy summary</button><span class="toast" id="repCopied"></span></div>
+</section>
+
+<p class="sample band" style="padding-top:0">All sites, alerts, clips, counts and ledger entries on this page are sample data for the demo. After you load a notebook export, that site's rule MCCs and the SHA-256 ledger come from the notebook run instead (a simulated site, not field clips).</p>
+</main>
+<script>
+{
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const seedOf=s=>{let h=2166136261;for(const c of s){h^=c.charCodeAt(0);h=Math.imul(h,16777619)>>>0}return h};
+const rng=s=>{let a=seedOf(s);return()=>{a=a+0x6D2B79F5>>>0;let t=a;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}};
+const mcc=([tp,fp,fn,tn])=>{const d=Math.sqrt((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn));return d?(tp*tn-fp*fn)/d:0};
+const pct=x=>Math.round(x*100)+"%";
+
+const SITES=[
+ {id:"r07",name:"Rig 07",kind:"Offshore jack-up rig",cams:24,packs:["core","drill","lift","offshore","data"],scale:1,trend:-.45,land:false,sign:"RIG 07",zone:"Pipe deck zone A",crane:"Crane 1 (port)"},
+ {id:"r12",name:"Rig 12",kind:"Land drilling rig",cams:18,packs:["core","drill","lift","data"],scale:.8,trend:0,land:true,sign:"RIG 12",zone:"Pipe rack",crane:"Mobile crane"},
+ {id:"r19",name:"Rig 19",kind:"Offshore jack-up rig",cams:22,packs:["core","drill","lift","offshore"],scale:.9,trend:.4,land:false,sign:"RIG 19",zone:"Main deck aft",crane:"Crane 2 (starboard)"},
+ {id:"blc",name:"Block C tower",kind:"Construction site, Riyadh",cams:40,packs:["core","lift","ksa","data"],scale:1.4,trend:-.3,land:true,sign:"BLOCK C",zone:"Tower crane zone",crane:"Tower crane 1"},
+ {id:"jby",name:"Pipe yard",kind:"Lay-down and pipe yard",cams:12,packs:["core","lift","yard"],scale:.7,trend:.1,land:true,sign:"YARD 3",zone:"Bay 4",crane:"Gantry crane"}
+];
+const PACKS={core:"Core",drill:"Drilling floor",lift:"Lifting",offshore:"Offshore deck",ksa:"KSA construction",yard:"Yard and logistics",data:"Needs PTW data",custom:"Built here"};
+const COV={strong:"Video: strong",partial:"Video: partial",needs:"Needs PTW data",custom:"Not validated"};
+const TIER={P1:{floor:.85,lat:"1 s",label:"P1 · fatal potential, ship first"},P2:{floor:.75,lat:"5 s",label:"P2"},P3:{floor:.6,lat:"shift summary",label:"P3"}};
+const floorOf=r=>r.pri?TIER[r.pri].floor:.8;
+const tag=r=>r.hz?`${r.hz} · ${r.pri}`:"";
+const R=[
+{id:"lift",hz:"H01",pri:"P1",name:"Person under a suspended load",packs:["core","lift"],cov:"strong",base:6,cm:[46,5,6,343],
+ en:"If a load is suspended by {crane} and a person is inside {zone} for more than {secs} seconds, then raise a lifting alert.",
+ fol:"∀p ∀t. Person(p) ∧ Suspended(load({crane}), t) ∧ InZoneFor(p, {zone}, t, {secs}s) → Alert(lifting, p, t)",
+ p:[["crane","Crane","site"],["zone","Exclusion zone","site"],["secs","Seconds","num",3]]},
+{id:"lof",name:"Line of fire",packs:["core","drill"],cov:"strong",base:4,cm:[38,7,8,297],
+ en:"If a person stands in the path of {hazard} in {zone} while it moves, then raise a line-of-fire alert.",
+ fol:"∀p ∀t. Person(p) ∧ Moving({hazard}, t) ∧ InPath(p, {hazard}, {zone}, t) → Alert(line_of_fire, p, t)",
+ p:[["hazard","Moving hazard","sel",["pipe handler","forklift","winch line"]],["zone","Zone","site"]]},
+{id:"height",hz:"H07",pri:"P2",name:"Work at height without a tie-off",packs:["core"],cov:"strong",base:3,cm:[29,4,6,211],
+ en:"If a person is above {h} metres in {zone} and no attached harness is detected, then raise a working-at-height alert.",
+ fol:"∀p ∀t. Person(p) ∧ Height(p, t) > {h} ∧ In(p, {zone}, t) ∧ ¬HarnessAttached(p, t) → Alert(height, p, t)",
+ p:[["h","Height (m)","num",1.8],["zone","Zone","sel",["Derrick","Scaffold, level 2","Mezzanine"]]]},
+{id:"ppe",hz:"H03",pri:"P1",name:"Missing PPE",packs:["core"],cov:"strong",base:9,cm:[88,9,7,512],
+ en:"If a person in {zone} is not wearing {ppe} for {frames} consecutive frames, then notify the supervisor and log a PPE alert.",
+ fol:"∀p ∀t. Person(p) ∧ In(p, {zone}, t) ∧ ForFrames(¬Wearing(p, {ppe}), t, {frames}) → Alert(ppe, p, t)",
+ p:[["zone","Zone","site"],["ppe","PPE item","sel",["a hard hat","a coverall","gloves","safety glasses"]],["frames","Frames","num",15]]},
+{id:"red",hz:"H02",pri:"P1",name:"Red zone during pipe handling",packs:["drill"],cov:"strong",base:5,cm:[52,6,4,388],
+ en:"If a person enters the red zone on {zone} while {act} is active, then alert the driller.",
+ fol:"∀p ∀t. Person(p) ∧ Active({act}, t) ∧ In(p, redzone({zone}), t) → Alert(red_zone, p, t)",
+ p:[["zone","Drill floor","sel",["the drill floor"]],["act","Activity","sel",["pipe handling","the rotary","the top drive"]]]},
+{id:"ssa",hz:"H04",pri:"P1",name:"Short-service worker unsupervised",packs:["core"],cov:"partial",base:3,cm:[24,4,3,190],
+ en:"If a person wearing a {hat} hard hat has no other-coloured hard hat within {m} metres for {secs} seconds, then notify the supervisor.",
+ fol:"∀p ∀t. Person(p) ∧ HatColour(p, {hat}) ∧ For(¬∃q. Person(q) ∧ ¬HatColour(q, {hat}) ∧ Dist(p, q, t) ≤ {m}, t, {secs}s) → Alert(short_service, p, t)",
+ p:[["hat","New-hand hat colour","sel",["green"]],["m","Distance (m)","num",10],["secs","Seconds","num",60]],
+ note:"Only works where new hands wear a distinct hat colour. Check this at the target GCC sites."},
+{id:"h2s",hz:"H05",pri:"P1",name:"Gas or H₂S alarm response",packs:["offshore","drill"],cov:"partial",base:.5,cm:[11,2,1,96],
+ en:"If a gas detector in {area} is in alarm and a person moves toward {area}, or has not reached a muster station within {mins} minutes, then raise a gas-response alert.",
+ fol:"∀p ∀t. Person(p) ∧ GasAlarm({area}, t) ∧ (MovingToward(p, {area}, t) ∨ ¬Mustered(p, t_alarm + {mins}min)) → Alert(gas_response, p, t)",
+ p:[["area","Detector area","sel",["Wellhead area","Shale shaker room","Mud pit room"]],["mins","Minutes to muster","num",5]],
+ note:"Cameras can't see gas. This rule needs the fixed gas-detector alarms as a feed."},
+{id:"fall",hz:"H06",pri:"P2",name:"Slip, trip or person down",packs:["core","drill"],cov:"strong",base:2,cm:[27,6,5,230],
+ en:"If a person in {zone} falls and stays down for {secs} seconds, or a fluid spill is detected on a walkway, then raise an alert and record a near-miss.",
+ fol:"∀t. (∃p. Person(p) ∧ In(p, {zone}, t) ∧ For(Down(p), t, {secs}s)) ∨ Spill(walkway({zone}), t) → Alert(fall_or_spill, {zone}, t)",
+ p:[["zone","Zone","site"],["secs","Seconds","num",5]]},
+{id:"fatigue",hz:"H09",pri:"P3",name:"Fatigue on long shifts",packs:["offshore","drill"],cov:"partial",base:2,cm:[14,7,8,160],
+ en:"If a person on {post} shows no movement for {mins} minutes during the night shift, then add it to the shift-lead summary.",
+ fol:"∀p ∀t. Person(p) ∧ OnPost(p, {post}, t) ∧ NightShift(t) ∧ For(Inactive(p), t, {mins}min) → Summary(fatigue, p, t)",
+ p:[["post","Post","sel",["Driller's cabin","Crane cab","Control room"]],["mins","Minutes","num",10]]},
+{id:"muster",hz:"H10",pri:"P2",name:"Slow or incomplete muster",packs:["offshore","drill"],cov:"strong",base:.5,cm:[18,2,2,120],
+ en:"During a muster, if the head count at {station} is below personnel on board after {mins} minutes, then add it to the drill report.",
+ fol:"∀t. Muster(t0) ∧ t = t0 + {mins}min ∧ HeadCount({station}, t) < Expected({station}) → Alert(muster, {station}, t)",
+ p:[["station","Muster station","sel",["Station A (lifeboat 1)","Station B (lifeboat 2)"]],["mins","Minutes","num",15]]},
+{id:"edge",name:"Unguarded deck edge",packs:["offshore"],cov:"strong",base:2,cm:[19,3,2,166],
+ en:"If a person is within {m} metres of an unguarded deck edge in {zone}, then raise an edge alert.",
+ fol:"∀p ∀t. Person(p) ∧ In(p, {zone}, t) ∧ ∃e. UnguardedEdge(e) ∧ Dist(p, e, t) ≤ {m} → Alert(edge, p, t)",
+ p:[["m","Distance (m)","num",2],["zone","Zone","site"]]},
+{id:"fork",name:"Pedestrian near forklift",packs:["yard","lift"],cov:"strong",base:5,cm:[41,6,5,301],
+ en:"If a pedestrian is within {m} metres of a moving forklift in {zone}, then raise a forklift alert.",
+ fol:"∀p ∀t. Person(p) ∧ In(p, {zone}, t) ∧ ∃f. Forklift(f) ∧ Moving(f, t) ∧ Dist(p, f, t) ≤ {m} → Alert(forklift, p, t)",
+ p:[["m","Distance (m)","num",3],["zone","Zone","site"]]},
+{id:"conf",hz:"H08",pri:"P2",name:"Confined-space entry",packs:["core"],cov:"partial",base:1.5,cm:[17,5,7,171],
+ en:"If a person enters {space} and no attendant is at the entrance for {secs} seconds, then raise a confined-space alert.",
+ note:"The permit cross-check for H08 needs the operator's permit-to-work system to expose an API.",
+ fol:"∀p ∀t. Person(p) ∧ Entered(p, {space}, t) ∧ ¬∃a. AttendantAt(a, entry({space}), t, {secs}s) → Alert(confined, p, t)",
+ p:[["space","Space","sel",["Mud tank 2","Ballast tank 4","Water tank 1"]],["secs","Seconds","num",30]]},
+{id:"hot",hz:"H08",pri:"P2",name:"Hot work without a permit",packs:["core"],cov:"partial",base:2,cm:[21,6,5,198],
+ en:"If welding arc or sparks are detected in {zone} and no valid hot-work permit covers {zone}, then alert the permit desk.",
+ fol:"∀t. (WeldArc({zone}, t) ∨ Sparks({zone}, t)) ∧ ¬∃w. HotWorkPermit(w, {zone}, t) → Alert(hot_work, {zone}, t)",
+ p:[["zone","Zone","sel",["Workshop","Main deck"]]],
+ note:"The permit cross-check for H08 needs the operator's permit-to-work system to expose an API."},
+{id:"smoke",name:"Ignition in a hazardous area",packs:["offshore","drill"],cov:"partial",base:1,cm:[9,3,4,140],
+ en:"If smoking or an open flame is detected in {zone}, then raise an ignition alert.",
+ fol:"∀t. (Smoking({zone}, t) ∨ OpenFlame({zone}, t)) → Alert(ignition, {zone}, t)",
+ p:[["zone","Hazardous area","sel",["Zone 1 wellhead area","Shale shaker room"]]]},
+{id:"drive",name:"Site speed limit",packs:["ksa","yard"],cov:"partial",base:4,cm:[33,8,9,240],
+ en:"If a vehicle in {zone} goes faster than {kph} km/h, then raise a driving alert.",
+ fol:"∀v ∀t. Vehicle(v) ∧ In(v, {zone}, t) ∧ Speed(v, t) > {kph} → Alert(driving, v, t)",
+ p:[["zone","Zone","sel",["Site access road","Laydown yard"]],["kph","Limit (km/h)","num",15]]},
+{id:"heat",name:"Midday outdoor work (heat)",packs:["ksa"],cov:"strong",base:7,cm:[61,3,4,402],
+ en:"If people work outdoors in {zone} between {start} and {end} during the summer restriction period, then raise a heat-rule alert.",
+ fol:"∀p ∀t. Person(p) ∧ Outdoors(p, {zone}, t) ∧ SummerPeriod(t) ∧ {start} ≤ clock(t) < {end} → Alert(heat, p, t)",
+ p:[["zone","Zone","sel",["Block C formwork","Roof slab"]],["start","From","sel",["12:00"]],["end","Until","sel",["15:00"]]],
+ note:"Check the current KSA dates and hours before use. The times here are a placeholder."},
+{id:"gas",name:"Gas test before entry",packs:["data"],cov:"needs",
+ en:"If a person enters {space} and no gas test was recorded in the last {min} minutes, then raise a gas-test alert.",
+ fol:"∀p ∀t. Person(p) ∧ Entered(p, {space}, t) ∧ ¬∃g. GasTest(g, {space}) ∧ t − time(g) ≤ {min}min → Alert(gas_test, p, t)",
+ p:[["space","Space","sel",["Mud tank 2","Ballast tank 4"]],["min","Minutes","num",30]]},
+{id:"iso",name:"Energy isolation",packs:["data"],cov:"needs",
+ en:"If a person works on {eq} and no isolation is recorded in the permit system, then raise an isolation alert.",
+ fol:"∀p ∀t. Person(p) ∧ WorksOn(p, {eq}, t) ∧ ¬IsolationRecorded({eq}, t) → Alert(isolation, p, t)",
+ p:[["eq","Equipment","sel",["Mud pump 1","Generator 3"]]]},
+{id:"auth",name:"Work authorisation",packs:["data"],cov:"needs",
+ en:"If work starts in {zone} and no valid permit covers {zone} at that time, then raise a work-authorisation alert.",
+ fol:"∀t. WorkStarted({zone}, t) ∧ ¬∃w. ValidPermit(w, {zone}, t) → Alert(no_permit, {zone}, t)",
+ p:[["zone","Zone","site"]]},
+{id:"bypass",name:"Bypassing safety controls",packs:["data"],cov:"needs",
+ en:"If a guard on {eq} is open while it runs and no override is approved, then raise a bypass alert.",
+ fol:"∀t. Running({eq}, t) ∧ GuardOpen({eq}, t) ∧ ¬ApprovedOverride({eq}, t) → Alert(bypass, {eq}, t)",
+ p:[["eq","Equipment","sel",["Shale shaker","Draw-works","Conveyor 2"]]]}
+];
+const WEEKS=[40,41,42,43,44,45,46,47];
+const OWN=["HSE advisor","Toolpusher","Crane supervisor","Site HSE lead","Deck foreman"];
+
+/* per-site data, generated once from fixed seeds */
+const D={};
+SITES.forEach(s=>{
+  const rules=R.filter(r=>r.packs.some(p=>s.packs.includes(p)));
+  const per={};
+  rules.forEach(r=>{
+    const g=rng(s.id+r.id);
+    const weeks=WEEKS.map((w,i)=>r.base?Math.max(0,Math.round(r.base*s.scale*(1+s.trend*(i-3.5)/7)*(.65+.7*g()))):0);
+    const cm=r.cm?r.cm.map((v,i)=>Math.max(1,Math.round(v*(i===1||i===2?.7+.7*g():.85+.3*g())))):null;
+    per[r.id]={weeks,cm,close:.72+.25*g(),med:Math.round(20+g()*160)/10,on:true};
+  });
+  const g=rng(s.id+"alerts"),alerts=[];
+  const vid=rules.filter(r=>r.base);
+  for(let i=0;i<9;i++){const r=vid[Math.floor(g()*vid.length)];const day=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][Math.floor(g()*7)];const hh=String(6+Math.floor(g()*12)).padStart(2,"0"),mm=String(Math.floor(g()*60)).padStart(2,"0");
+    alerts.push({when:`${day} ${hh}:${mm}`,ord:-i,rule:r,owner:OWN[Math.floor(g()*OWN.length)],open:i<2||g()<.12,clip:`${s.id.slice(1)}-${1460-i*3}`})}
+  D[s.id]={s,rules,per,alerts,vals:{},clipState:{}};
+});
+let site="r07",pack="all",cur="lift",building=false,custom=[];
+try{custom=JSON.parse(localStorage.getItem("vg360-custom")||"[]")}catch(e){custom=[]}
+const S=()=>D[site];
+const siteRules=()=>[...S().rules,...custom];
+const valsFor=r=>{const v=S().vals;if(!v[r.id]){v[r.id]={};(r.p||[]).forEach(([k,,t,o])=>v[r.id][k]=t==="site"?(k==="crane"?S().s.crane:S().s.zone):t==="sel"?o[0]:o)}return v[r.id]};
+const fill=(s,v,hl)=>s.replace(/\{(\w+)\}/g,(_,k)=>hl?`<b>${esc(v[k])}</b>`:v[k]);
+const totals=id=>{const d=D[id];return WEEKS.map((_,i)=>d.rules.reduce((a,r)=>a+(d.per[r.id].on?d.per[r.id].weeks[i]:0),0))};
+const avgMcc=id=>{const d=D[id],ms=d.rules.filter(r=>d.per[r.id].cm).map(r=>mcc(d.per[r.id].cm));return ms.reduce((a,b)=>a+b,0)/ms.length};
+const closeRate=id=>{const d=D[id];let n=0,c=0;d.rules.forEach(r=>{const w=d.per[r.id].weeks.reduce((a,b)=>a+b,0);n+=w;c+=w*d.per[r.id].close});return n?c/n:0};
+
+/* overview */
+function renderOverview(){
+  $("#sitecards").innerHTML=SITES.map(s=>{const t=totals(s.id),last=t[7],prev=t[6],ch=prev?(last-prev)/prev:0;
+    return `<button class="sc" data-s="${s.id}" aria-pressed="${s.id===site}"><b>${s.name}</b><small>${s.kind} · ${s.cams} cameras</small><div class="k"><span>Alerts, week 47</span><span>${last} <span class="${ch>0?"up":"down"}">${ch>0?"▲":"▼"}${Math.abs(Math.round(ch*100))}%</span></span><span>Open now</span><span>${D[s.id].alerts.filter(a=>a.open).length}</span><span>Average MCC</span><span>${avgMcc(s.id).toFixed(2)}</span></div></button>`}).join("");
+  const d=S(),t=totals(site),a=t.slice(0,4).reduce((x,y)=>x+y,0),b=t.slice(4).reduce((x,y)=>x+y,0),ch=a?(b-a)/a:0;
+  const byRule=d.rules.filter(r=>r.base).map(r=>[r,d.per[r.id].weeks.reduce((x,y)=>x+y,0)]).sort((x,y)=>y[1]-x[1]);
+  const top=byRule[0];
+  $("#ovTitle").textContent=`${d.s.name}: alerts ${ch<=0?"down":"up"} ${Math.abs(Math.round(ch*100))}% over the last four weeks`;
+  $("#ovLead").textContent=`${b} alerts in weeks 44–47, against ${a} in weeks 40–43. ${top[0].name} is the most frequent rule, with ${top[1]} alerts in eight weeks.`;
+  $("#kpis").innerHTML=[[t[7],"Alerts in week 47"],[d.alerts.filter(x=>x.open).length,"Open alerts"],[pct(closeRate(site)),"Closed within 24 hours"],[avgMcc(site).toFixed(2),"Average MCC, video rules"],[(()=>{const p1=d.rules.filter(r=>r.pri==="P1"&&d.per[r.id].cm);return `${p1.filter(r=>mcc(d.per[r.id].cm)>=floorOf(r)).length} of ${p1.length}`})(),"P1 rules at their MCC floor"]].map(([v,l])=>`<div class="kpi"><div class="big">${v}</div><span>${l}</span></div>`).join("");
+  const cols=["var(--acc)","var(--steel2)","var(--warn)","var(--c4)","var(--c3)"];
+  const groups=byRule.slice(0,4).map(x=>x[0]);
+  const max=Math.max(...t,1);
+  $("#chart").innerHTML=WEEKS.map((w,i)=>{let other=t[i];const segs=groups.map((r,j)=>{const v=d.per[r.id].weeks[i];other-=v;return `<i style="height:${v/max*100}%;background:${cols[j]}" title="${r.name}: ${v}"></i>`}).join("");
+    return `<div class="col">${segs}<i style="height:${Math.max(0,other)/max*100}%;background:${cols[4]}" title="Other rules: ${other}"></i><em style="bottom:calc(${t[i]/max*100}% + 2px)">${t[i]}</em></div>`}).join("");
+  $("#xl").innerHTML=WEEKS.map(w=>`<span>W${w}</span>`).join("");
+  $("#legend").innerHTML=[...groups.map(r=>r.name),"Other rules"].map((n,j)=>`<span style="--c:${cols[j]}">${n}</span>`).join("");
+  $("#alerts").innerHTML=`<thead><tr><th>When</th><th>Rule</th><th>Owner</th><th>Status</th><th>Clip</th></tr></thead><tbody>${d.alerts.map(x=>`<tr><td data-l="When" style="white-space:nowrap">${x.when}</td><td data-l="Rule">${x.rule.name}</td><td data-l="Owner">${x.owner}</td><td data-l="Status"><span class="pill ${x.open?"p-open":"p-closed"}">${x.open?"Open":"Closed"}</span></td><td data-l="Clip"><button class="link" data-clip="${x.rule.id}">${x.clip}</button></td></tr>`).join("")}</tbody>`;
+}
+$("#sitecards").addEventListener("click",e=>{const b=e.target.closest("[data-s]");if(b)setSite(b.dataset.s)});
+$("#alerts").addEventListener("click",e=>{const b=e.target.closest("[data-clip]");if(!b)return;const t=b.dataset.clip;const c=clipsFor().find(c=>c.rule===t)||clipsFor()[0];curClip=c.id;go("clips")});
+
+/* rule library */
+function renderList(){
+  $("#rlTitle").textContent=`Rule library for ${S().s.name}`;
+  const ps=["all","p1",...S().s.packs,...(custom.length?["custom"]:[])];
+  if(!ps.includes(pack))pack="all";
+  $("#packs").innerHTML=ps.map(k=>`<button class="chip" data-p="${k}" aria-pressed="${k===pack}">${k==="all"?"All":k==="p1"?"P1, ship first":PACKS[k]}</button>`).join("");
+  const rs=siteRules().filter(r=>pack==="all"||(pack==="p1"?r.pri==="P1":r.packs.includes(pack))).sort((a,b)=>(a.hz||"Z").localeCompare(b.hz||"Z"));
+  if(!rs.length){pack="all";return renderList()}
+  if(!building&&!rs.some(r=>r.id===cur))cur=rs[0].id;
+  $("#rlist").innerHTML=rs.map(r=>{const on=S().per[r.id]?S().per[r.id].on:true;return `<li><button data-r="${r.id}" aria-current="${!building&&r.id===cur}"><span>${esc(r.name)}<small>${r.hz?tag(r)+" · ":""}${r.packs.map(p=>PACKS[p]).join(" · ")}${on?"":" · switched off"}</small></span><span class="badge b-${r.cov}">${COV[r.cov]}</span></button></li>`}).join("");
+}
+function renderText(){const r=siteRules().find(x=>x.id===cur),v=r.p?valsFor(r):{};$("#en").innerHTML=r.p?fill(r.en,v,true):esc(r.en);$("#fol").textContent=r.p?fill(r.fol,v,false):r.fol}
+function renderDetail(){
+  if(building)return renderBuilder();
+  const r=siteRules().find(x=>x.id===cur),per=S().per[r.id];
+  let form="",val;
+  if(r.p){const v=valsFor(r);form=`<div class="params">${r.p.map(([k,l,t,o])=>{const opts=t==="site"?(k==="crane"?[S().s.crane]:[S().s.zone,"Main deck","Workshop"]):o;return `<div><label for="p-${k}">${l}</label>${t==="num"?`<input id="p-${k}" data-k="${k}" type="number" step="any" min="0" value="${esc(v[k])}">`:`<select id="p-${k}" data-k="${k}">${opts.map(x=>`<option${x===v[k]?" selected":""}>${esc(x)}</option>`).join("")}</select>`}</div>`}).join("")}</div>`}
+  if(per&&per.cm){const [tp,fp,fn,tn]=per.cm,m=mcc(per.cm),fl=floorOf(r);
+    const g=rng(site+r.id+"split"),splits=[["Day",.03],["Night",-.05],["Rain",-.08],["Spray",-.1]].map(([n,o])=>[n,Math.min(.99,m+o+(g()-.5)*.06)]);
+    val=`<div class="val"><div class="cm"><div class="h"></div><div class="h">Alert</div><div class="h">No alert</div><div class="h">Real breach</div><div class="g">${tp}</div><div class="r">${fn}</div><div class="h">No breach</div><div class="r">${fp}</div><div class="g">${tn}</div></div>
+    <div><div class="lbl" style="margin:0">MCC on ${tp+fp+fn+tn} ${per.nb?"notebook frames":"held-out clips"}</div><div class="big">${m.toFixed(2)}</div><div class="meter"><i style="width:${Math.max(0,m)*100}%"></i></div><p class="note">${fp} false alarm${fp===1?"":"s"} and ${fn} missed breach${fn===1?"":"es"}. Acceptance floor${r.pri?` for ${r.pri}`:""}: MCC ${fl.toFixed(2)} or higher. ${m>=fl?"Meets the floor.":"Below the floor: needs tuning before go-live."}</p></div></div>
+    ${per.nb?`<p class="note"><span class="badge b-nb">Measured in the notebook</span> ${esc(per.nb)}. Parameters there: ${esc(per.nbEn)}</p><p class="note">Condition splits (day, night, rain, spray) need labelled field clips, so they aren't shown for notebook results.</p>`:`<div class="lbl">MCC by condition</div><div class="scroll"><table><thead><tr>${splits.map(([n])=>`<th class="n">${n}</th>`).join("")}</tr></thead><tbody><tr>${splits.map(([,v])=>`<td class="n" style="color:${v>=fl?"var(--ok)":"var(--bad)"}">${v.toFixed(2)}</td>`).join("")}</tr></tbody></table></div>
+    <p class="note">Detectors are trained with Sharpness-Aware Minimization (SAM) so they generalise across rigs and lighting. Splits are reported separately because one weak condition can hide inside a good overall score.</p>`}`;
+  }else if(r.cov==="custom")val=`<p class="note">Not validated yet. Collect and label clips from ${S().s.name} before switching this rule on.</p>`;
+  else val=`<p class="note">No video validation: this rule reads the permit-to-work or control system, so it goes live once that link is connected.</p>`;
+  $("#detail").innerHTML=`<h3>${r.hz?r.hz+" · ":""}${esc(r.name)}</h3><div class="chips" style="margin:0"><span class="badge b-${r.cov}">${COV[r.cov]}</span>${r.pri?`<span class="badge ${r.pri==="P1"?"p-open":"b-needs"}">${TIER[r.pri].label}</span><span class="badge b-needs">Max alert latency ${TIER[r.pri].lat}</span>`:""}</div>${r.note?`<p class="note">${r.note}</p>`:""}
+  ${form}<div class="lbl">Rule in controlled English</div><p class="english" id="en"></p>
+  <div class="lbl">Formal-logic version (generated)</div><pre><code id="fol"></code></pre>
+  <div class="lbl">Validation on ${S().s.name} clips</div>${val}
+  ${per?`<label class="sw"><input type="checkbox" id="onoff"${per.on?" checked":""}> Switched on at ${S().s.name}</label>`:""}
+  ${r.cov==="custom"?`<div class="row"><button class="btn ghost" id="delRule">Delete this rule</button></div>`:""}`;
+  renderText();
+}
+$("#packs").addEventListener("click",e=>{const b=e.target.closest("[data-p]");if(!b)return;pack=b.dataset.p;building=false;renderList();renderDetail()});
+$("#rlist").addEventListener("click",e=>{const b=e.target.closest("[data-r]");if(!b)return;cur=b.dataset.r;building=false;renderList();renderDetail()});
+$("#detail").addEventListener("input",e=>{if(building)return renderBuilderText();const k=e.target.dataset.k;if(!k)return;const r=siteRules().find(x=>x.id===cur);valsFor(r)[k]=e.target.value;renderText()});
+$("#detail").addEventListener("change",e=>{if(e.target.id==="onoff"){S().per[cur].on=e.target.checked;renderList();renderOverview()}else if(building)renderBuilderText()});
+$("#detail").addEventListener("click",e=>{
+  if(e.target.id==="delRule"){custom=custom.filter(r=>r.id!==cur);saveCustom();cur="lift";renderList();renderDetail()}
+  if(e.target.id==="saveRule"){const b=buildRule();custom.push(b);saveCustom();building=false;cur=b.id;pack="custom";renderList();renderDetail()}
+  if(e.target.id==="cancelRule"){building=false;renderList();renderDetail()}
+});
+$("#newRule").addEventListener("click",()=>{building=true;renderList();renderDetail()});
+function saveCustom(){try{localStorage.setItem("vg360-custom",JSON.stringify(custom))}catch(e){}}
+
+/* rule builder */
+const SUBJ={person:["a person","Person(x)"],vehicle:["a vehicle","Vehicle(x)"],forklift:["a forklift","Forklift(x)"]};
+const COND={inside:["is inside {Z}",n=>`In(x, {Z}, t)`,false],near:["is within {N} metres of a moving forklift in {Z}",n=>`In(x, {Z}, t) ∧ ∃f. Forklift(f) ∧ Moving(f, t) ∧ Dist(x, f, t) ≤ ${n}`,true],
+ height:["is above {N} metres in {Z} without an attached harness",n=>`In(x, {Z}, t) ∧ Height(x, t) > ${n} ∧ ¬HarnessAttached(x, t)`,true],
+ ppe:["is in {Z} without a hard hat",n=>`In(x, {Z}, t) ∧ ¬Wearing(x, hard_hat, t)`,false],speed:["goes faster than {N} km/h in {Z}",n=>`In(x, {Z}, t) ∧ Speed(x, t) > ${n}`,true]};
+const WHILE={none:["",""],load:[" while a load is suspended"," ∧ Suspended(load, t)"],top:[" while the top drive is moving"," ∧ Moving(top_drive, t)"]};
+function bv(){const g=id=>{const el=$("#"+id);return el?el.value:""};return{name:g("b-name")||"New rule",subj:g("b-subj")||"person",cond:g("b-cond")||"inside",n:g("b-n")||"2",zone:g("b-zone")||S().s.zone,wh:g("b-while")||"none",secs:g("b-secs")||"0"}}
+function buildRule(){const v=bv(),c=COND[v.cond],sub=SUBJ[v.subj];
+  const cond=c[0].replace("{N}",v.n).replace("{Z}",v.zone);const secs=+v.secs;
+  const en=`If ${sub[0]} ${cond}${WHILE[v.wh][0]}${secs>0?` for more than ${secs} seconds`:""}, then raise a ${v.name.toLowerCase()} alert.`;
+  let phi=`${c[1](v.n).replace(/\{Z\}/g,v.zone)}${WHILE[v.wh][1]}`;
+  const tag=v.name.toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"")||"custom";
+  const fol=`∀x ∀t. ${sub[1]} ∧ ${secs>0?`For(${phi}, t, ${secs}s)`:phi} → Alert(${tag}, x, t)`;
+  return{id:"c"+Date.now().toString(36),name:v.name,packs:["custom"],cov:"custom",en,fol}}
+function renderBuilder(){
+  const o=(m,sel)=>Object.entries(m).map(([k,v])=>`<option value="${k}"${k===sel?" selected":""}>${v[0]||"Nothing else"}</option>`).join("");
+  $("#detail").innerHTML=`<h3>Build a new rule</h3><p class="note">Choose the parts and the rule is written in controlled English and formal logic as you go.</p>
+  <div class="params"><div><label for="b-name">Alert name</label><input id="b-name" value="Exclusion zone"></div>
+  <div><label for="b-subj">Who or what</label><select id="b-subj">${Object.entries(SUBJ).map(([k,v])=>`<option value="${k}">${v[0]}</option>`).join("")}</select></div>
+  <div><label for="b-cond">Condition</label><select id="b-cond">${o(COND,"inside")}</select></div>
+  <div id="b-nwrap"><label for="b-n">Number</label><input id="b-n" type="number" step="any" min="0" value="2"></div>
+  <div><label for="b-zone">Zone</label><select id="b-zone">${[S().s.zone,"Main deck","Workshop","Gate 2"].map(z=>`<option>${esc(z)}</option>`).join("")}</select></div>
+  <div><label for="b-while">Only while</label><select id="b-while">${o(WHILE,"none")}</select></div>
+  <div><label for="b-secs">For more than (seconds)</label><input id="b-secs" type="number" min="0" value="5"></div></div>
+  <div class="lbl">Rule in controlled English</div><p class="english" id="en"></p>
+  <div class="lbl">Formal-logic version (generated)</div><pre><code id="fol"></code></pre>
+  <div class="row"><button class="btn" id="saveRule">Save to library</button><button class="btn ghost" id="cancelRule">Cancel</button></div>
+  <p class="note">Saved rules stay in this browser only, and start as not validated.</p>`;
+  renderBuilderText();
+}
+function renderBuilderText(){const v=bv();$("#b-nwrap").hidden=!COND[v.cond][2];const r=buildRule();$("#en").textContent=r.en;$("#fol").textContent=r.fol}
+
+/* engine */
+const N=20,SUS=t=>t>=3&&t<=16,INZ=t=>t>=7&&t<=13,CONF=[0,0,0,0,0,0,0,.91,.93,.94,.92,.95,.9,.88,0,0,0,0,0,0];
+const fnv=(s,seed)=>{let h=seed>>>0;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)>>>0}return h.toString(16).padStart(8,"0")};
+const H=s=>fnv(s,2166136261)+fnv(s,3735928559);
+let tampered=false,lastKey="";
+const fmt=t=>`14:02:${String(t).padStart(2,"0")}`;
+function alertTime(thr){let c=0;for(let t=0;t<N;t++){c=INZ(t)&&SUS(t)?c+1:0;if(c>=thr)return t}return -1}
+function chain(es){let prev="0".repeat(16);return es.map(e=>{const h=H(JSON.stringify([e.time,e.rule,e.who,e.clip,prev]));const o={...e,prev,hash:h};prev=h;return o})}
+function renderEngine(){
+  const s=S().s,t=+$("#tsl").value,thr=+$("#thr").value,at=alertTime(thr);
+  $("#enLead").textContent=`H01, person under a suspended load (P1, maximum alert latency 1 s) at ${s.name}, ${s.zone}, 14:02:00–14:02:19. Drag the timeline to watch the rule check each second of detections and write an alert to the evidence ledger.`;
+  $("#tval").textContent=fmt(t);
+  const row=(f,c)=>Array.from({length:N},(_,i)=>`<i class="${f(i)?c:""}${i===t?" now":""}"></i>`).join("");
+  $("#tl").innerHTML=`<span>Load suspended</span><div class="cells">${row(SUS,"y")}</div><span>Person in zone</span><div class="cells">${row(INZ,"p")}</div><span>Alert</span><div class="cells">${row(i=>at>=0&&i===at,"a")}</div>`;
+  let c=0;for(let i=0;i<=t;i++)c=INZ(i)&&SUS(i)?c+1:0;
+  const fired=at>=0&&t>=at,yn=b=>b?`<span class="yes">true</span>`:`<span class="no">false</span>`;
+  $("#preds").innerHTML=`<tr><td>Suspended(load(${esc(s.crane)}), t)</td><td>${yn(SUS(t))}</td></tr><tr><td>Person in ${esc(s.zone)}${CONF[t]?` (confidence ${CONF[t].toFixed(2)})`:""}</td><td>${yn(INZ(t))}</td></tr><tr><td>Seconds in zone so far</td><td>${c} of ${thr}</td></tr>`;
+  const clip=`${s.id.slice(1)}-1411`;
+  $("#dec").className="decision"+(fired?" fire":"");
+  $("#dec").innerHTML=fired?`<b>Alert at ${fmt(at)}.</b> Person 4 was under the suspended load for ${thr} seconds. Written to the ledger with clip ${clip}.`:at<0?`<b>No alert.</b> The person never stayed in the zone for ${thr} seconds while the load was up.`:`<b>No alert yet.</b> The rule fires once the person has been in the zone for ${thr} seconds while the load is suspended.`;
+  const stage=fired?4:INZ(t)&&SUS(t)?3:SUS(t)?2:1;
+  document.querySelectorAll(".st").forEach(x=>{const i=+x.dataset.s;x.className="st"+(i===4&&fired?" fire":i<=stage?" on":"")});
+  const es=S().alerts.slice(2,5).reverse().map((a,i)=>({time:`13:${String(12+i*14).padStart(2,"0")}:${String(7+i*11).padStart(2,"0")}`,rule:a.rule.id,who:"Person "+(2+i),clip:a.clip}));
+  if(fired)es.push({time:fmt(at),rule:"lifting",who:"Person 4",clip});
+  const ch=chain(es);if(tampered)ch[0].who="Person 9";
+  const ok=ch.every((e,i)=>H(JSON.stringify([e.time,e.rule,e.who,e.clip,e.prev]))===e.hash&&(!i||e.prev===ch[i-1].hash));
+  const key=site+fired;
+  $("#ledger").innerHTML=ch.slice().reverse().map((e,j)=>`<li class="${fired&&j===0&&key!==lastKey?"new":""}"><b>${e.time}</b> · ${e.rule} · ${e.who} · clip ${e.clip}<span class="mono">hash ${e.hash}</span><span class="mono">prev ${e.prev}</span></li>`).join("");
+  lastKey=key;
+  $("#chk").style.color=ok?"var(--ok)":"var(--bad)";
+  $("#chk").textContent=ok?"Chain verified: every entry matches its hash.":"Chain broken: the edited entry no longer matches its hash.";
+  $("#tamper").textContent=tampered?"Undo the edit":"Edit an old entry";
+  const pl=S().per.lift;$("#engMcc").textContent=pl&&pl.cm?mcc(pl.cm).toFixed(2):"n/a";$("#engSite").textContent=s.name;
+}
+$("#tsl").addEventListener("input",renderEngine);$("#thr").addEventListener("change",renderEngine);
+$("#tamper").addEventListener("click",()=>{tampered=!tampered;renderEngine()});
+
+/* clips */
+const CT={
+ lift:{rule:"H01 · Person under a suspended load",dur:7,wrong:"A crew member walked under a suspended load to fetch a tag line instead of going around the barrier.",should:"Stay outside the exclusion zone while a load is suspended, and handle tag lines from outside the barrier.",q:"What made walking under the load feel quicker, and how do we remove that reason?",lab:"Person · in zone"},
+ height:{rule:"H07 · Work at height without a tie-off",dur:41,wrong:"A worker stepped onto a raised platform edge to reach a valve without clipping on the harness lanyard.",should:"Clip on before leaving the guarded area, and use an anchor point rated for fall arrest.",q:"Where on this site is the anchor point too far from the job, and what would fix it?",lab:"Person · 2.6 m, no harness"},
+ lof:{rule:"Line of fire",dur:4,wrong:"A worker stood in the path of a pipe being moved by the handler while guiding it by hand.",should:"Stand clear of the pipe's path, guide it with a push stick, and stop the move if you need to step in.",q:"Who can stop the job here, and do people feel able to?",lab:"Person · in pipe path"},
+ ppe:{rule:"H03 · Missing PPE",dur:64,wrong:"A worker took off a hard hat inside the work zone during a short break and carried on working.",should:"Keep PPE on everywhere inside the marked zone, and take breaks in the designated rest area.",q:"Is the rest area close enough that people use it?",lab:"Person · no hard hat"}
+};
+function clipsFor(){const ids=S().rules.map(r=>r.id);const types=["lift","height","lof","ppe"].filter(k=>ids.includes(k));return types.map((k,i)=>({id:`${site.slice(1)}-${1411+i*7}`,type:k,rule:k,...CT[k],when:`${["Mon","Tue","Wed","Thu"][i]} 1${4-i%2}:0${2+i}`}))}
+let curClip=null,mode="internal";
+const TG=[["face","Blur faces"],["tag","Hide name tags"],["logo","Hide company logos"],["rig","Hide site name"],["box","Show detection boxes"]];
+const CK=[["appr","Customer HSE lead approved this clip"],["contract","Contract allows use outside this customer"],["notice","Workers informed under local data protection law"]];
+function cst(){const m=S().clipState;if(!m[curClip]){const g=rng(curClip);m[curClip]={face:true,tag:g()>.3,logo:g()>.6,rig:true,box:true,appr:g()>.5,contract:false,notice:false}}return m[curClip]}
+function worker(x,y,s,id,bare){
+  return `<g transform="translate(${x} ${y}) scale(${s})"><ellipse cx="0" cy="96" rx="22" ry="5" fill="#000" opacity=".22"/>
+  <rect x="-14" y="52" width="11" height="44" rx="4" fill="#1d3946"/><rect x="3" y="52" width="11" height="44" rx="4" fill="#163040"/>
+  <rect x="-19" y="12" width="38" height="46" rx="9" fill="#ff7a1a"/><rect x="-19" y="12" width="12" height="46" rx="6" fill="#e0610c"/><rect x="-19" y="34" width="38" height="5" fill="#f4f4e8"/>
+  <rect x="5" y="17" width="10" height="5" rx="1" fill="#fff"/><rect x="-14" y="19" width="12" height="9" rx="2" fill="#2156c8"/>
+  <circle cx="0" cy="0" r="12" fill="#c98b62"/>${bare?`<path d="M-12 -4a12 10 0 0 1 24 0z" fill="#2a2018"/>`:`<path d="M-14 -3a14 13 0 0 1 28 0z" fill="#f5f5f0"/><rect x="-16" y="-4" width="32" height="4" rx="2" fill="#dcdcd4"/>`}
+  <g class="ov-face">${Array.from({length:9},(_,i)=>`<rect x="${-12+(i%3)*8}" y="${-7+Math.floor(i/3)*7}" width="8" height="7" fill="${["#b07a58","#a26d4d","#c28c69","#996448"][(i*7+id)%4]}"/>`).join("")}</g>
+  <rect class="ov-tag" x="3" y="15" width="14" height="9" fill="#111"/><rect class="ov-logo" x="-16" y="17" width="16" height="13" rx="2" fill="#ff7a1a"/></g>`;
+}
+function renderScene(){
+  const s=S().s,c=clipsFor().find(x=>x.id===curClip),st=cst(),ty=c.type;
+  const rail=Array.from({length:17},(_,i)=>`<rect x="${i*40}" y="210" width="4" height="40" fill="#5f7480"/>`).join("");
+  const plates=Array.from({length:8},(_,i)=>`<rect x="${i*84-10}" y="250" width="82" height="150" fill="${i%2?"#7d8b93":"#86949c"}"/>`).join("");
+  const crane=`<rect x="520" y="40" width="26" height="210" fill="#ffb020"/><rect x="520" y="40" width="9" height="210" fill="#e39410"/>${Array.from({length:10},(_,i)=>`<path d="M520 ${50+i*20} l26 10" stroke="#c77f0c" stroke-width="3"/>`).join("")}<path d="M533 52 L170 28" stroke="#ffb020" stroke-width="14" stroke-linecap="round"/><path d="M533 46 L170 22" stroke="#ffd36a" stroke-width="3"/>`;
+  const load=`<line x1="200" y1="32" x2="200" y2="150" stroke="#222" stroke-width="2"/><rect x="150" y="150" width="120" height="34" rx="3" fill="#6b4a33"/>${Array.from({length:5},(_,i)=>`<circle cx="${162+i*24}" cy="167" r="10" fill="#3a2b20" stroke="#8a6a4f" stroke-width="3"/>`).join("")}<ellipse cx="205" cy="320" rx="150" ry="44" fill="none" stroke="#ff5a1d" stroke-width="4" stroke-dasharray="14 9"/>`;
+  const scaff=`<g fill="#5f7480"><rect x="150" y="140" width="6" height="200"/><rect x="262" y="140" width="6" height="200"/><rect x="146" y="196" width="126" height="10"/><rect x="146" y="140" width="126" height="5"/></g><rect x="146" y="196" width="126" height="10" fill="url(#hatch)" opacity=".85"/>`;
+  const pipe=`<rect x="250" y="300" width="300" height="26" rx="13" fill="#4a5a63"/><rect x="250" y="300" width="300" height="9" rx="4" fill="#6f828c"/><path d="M240 286 h-60 m0 0 l14 -9 m-14 9 l14 9" stroke="#ff5a1d" stroke-width="5" fill="none" stroke-linecap="round"/>`;
+  const zone=`<rect x="110" y="270" width="260" height="110" fill="none" stroke="#ff5a1d" stroke-width="4" stroke-dasharray="14 9"/>`;
+  const A=ty==="lift"?[205,232]:ty==="height"?[208,98]:ty==="lof"?[170,238]:[230,236];
+  const box=ty==="lift"?`<rect x="146" y="144" width="128" height="44" stroke="#ffd21f"/><rect x="146" y="126" width="104" height="18" fill="#ffd21f" stroke="none"/><text x="152" y="140" fill="#111" stroke="none">Load · suspended</text>`:"";
+  const lx=A[0]-25,ly=A[1]-18;
+  $("#scene").innerHTML=`<defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7fb3cc"/><stop offset="1" stop-color="#cfe3ea"/></linearGradient>
+  <pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="#ffd21f"/><rect width="4" height="8" fill="#1a1a1a"/></pattern></defs>
+  <rect width="640" height="260" fill="url(#sky)"/><rect y="236" width="640" height="18" fill="${s.land?"#c9a66b":"#3f6f86"}"/>
+  ${plates}<rect y="206" width="640" height="6" fill="#5f7480"/>${rail}${ty==="lift"?crane+load:""}${ty==="height"?scaff:""}${ty==="lof"?pipe:""}${ty==="ppe"?zone:""}
+  <rect x="380" y="292" width="160" height="10" fill="url(#hatch)"/><rect x="380" y="302" width="6" height="30" fill="#333"/><rect x="534" y="302" width="6" height="30" fill="#333"/>
+  <rect x="20" y="150" width="120" height="42" rx="4" fill="#f4f4ee" stroke="#33454f" stroke-width="3"/><text x="80" y="178" text-anchor="middle" font-family="Barlow Condensed,sans-serif" font-weight="700" font-size="22" fill="#14303c">${esc(s.sign)}</text>
+  <rect class="ov-rig" x="16" y="146" width="128" height="50" rx="4" fill="#2b3a42"/>
+  ${worker(A[0],A[1],1.05,1,ty==="ppe")}${worker(470,236,1,2,false)}
+  <g class="ov-box" fill="none" stroke-width="3" font-family="Barlow,sans-serif" font-size="14" font-weight="600"><rect x="${A[0]-25}" y="${A[1]-18}" width="52" height="124" stroke="#ff2e2e"/><rect x="${lx}" y="${ly-18}" width="${c.lab.length*7.4+12}" height="18" fill="#ff2e2e" stroke="none"/><text x="${lx+6}" y="${ly-4}" fill="#fff" stroke="none">${esc(c.lab)}</text>${box}<rect x="445" y="218" width="52" height="120" stroke="#2fd07a"/></g>`;
+  const show=(k,b)=>document.querySelectorAll("#scene .ov-"+k).forEach(e=>e.style.display=b?"":"none");
+  show("face",st.face);show("tag",st.tag);show("logo",st.logo);show("rig",st.rig);show("box",st.box);
+}
+function renderClips(){
+  const cs=clipsFor();if(!cs.some(c=>c.id===curClip))curClip=cs[0].id;
+  const c=cs.find(x=>x.id===curClip),st=cst();
+  $("#clTitle").textContent=`Near-miss clips from ${S().s.name}`;
+  $("#cliplist").innerHTML=cs.map(x=>`<button class="cl" data-c="${x.id}" aria-pressed="${x.id===curClip}"><b>Clip ${x.id}</b><small>${x.rule} · ${x.when}</small></button>`).join("");
+  $("#cTitle").textContent=`Clip ${c.id} · ${c.rule}`;
+  $("#cMeta").innerHTML=`<dt>When</dt><dd>${c.when}, ${c.dur} s in breach</dd><dt>What went wrong</dt><dd>${c.wrong}</dd><dt>What should happen</dt><dd>${c.should}</dd>`;
+  $("#toggles").innerHTML=TG.map(([k,l])=>`<label class="tg"><input type="checkbox" data-g="${k}"${st[k]?" checked":""}>${l}</label>`).join("");
+  $("#checks").innerHTML=CK.map(([k,l])=>`<label class="tg"><input type="checkbox" data-g="${k}"${st[k]?" checked":""}>${l}</label>`).join("");
+  renderScene();renderGate();
+}
+function renderGate(){
+  const c=clipsFor().find(x=>x.id===curClip),st=cst();
+  const anon=[["face","Faces blurred"],["tag","Name tags hidden"],["logo","Company logos hidden"],["rig","Site name hidden"],["appr","Customer HSE lead approval"]];
+  const need=mode==="internal"?anon:[...anon,["contract","Contract allows sharing"],["notice","Workers informed"]];
+  $("#gate").innerHTML=need.map(([k,l])=>`<li><span class="mk" style="color:${st[k]?"var(--ok)":"var(--bad)"}">${st[k]?"✓":"✗"}</span>${l}</li>`).join("");
+  const miss=need.filter(([k])=>!st[k]).map(([,l])=>l.toLowerCase());
+  const s=$("#status");s.className="status "+(miss.length?"stop":"go");
+  s.textContent=miss.length?`Can't release yet. Missing: ${miss.join(", ")}.`:mode==="internal"?"Ready for this customer's toolbox talks.":"Ready for the shared training library.";
+  document.querySelectorAll("#mode .chip").forEach(b=>b.setAttribute("aria-pressed",b.dataset.m===mode));
+  $("#talk").value=`Toolbox talk: ${c.rule}\n\nWhat happened: ${c.wrong} The breach lasted ${c.dur} seconds.\n\nWhat should happen: ${c.should}\n\nQuestion for the crew: ${c.q}`;
+}
+$("#cliplist").addEventListener("click",e=>{const b=e.target.closest("[data-c]");if(!b)return;curClip=b.dataset.c;$("#copied").textContent="";renderClips()});
+const onTg=e=>{const k=e.target.dataset.g;if(!k)return;cst()[k]=e.target.checked;renderScene();renderGate()};
+$("#toggles").addEventListener("change",onTg);$("#checks").addEventListener("change",onTg);
+$("#mode").addEventListener("click",e=>{const b=e.target.closest("[data-m]");if(!b)return;mode=b.dataset.m;renderGate()});
+async function copyText(txt,out,ta){try{await navigator.clipboard.writeText(txt);out.textContent="Copied."}catch(err){if(ta){ta.select();out.textContent="Selected. Press Ctrl+C to copy."}else out.textContent="Copy isn't available here. Select the text instead."}}
+$("#copy").addEventListener("click",()=>copyText($("#talk").value,$("#copied"),$("#talk")));
+
+/* report */
+const PER=[["a","Weeks 40–43",0],["b","Weeks 44–47",4]];let period="b",repText="";
+function renderReport(){
+  const d=S(),s=d.s,p=PER.find(x=>x[0]===period),o=p[2];
+  $("#periods").innerHTML=PER.map(([k,l])=>`<button class="chip" data-per="${k}" aria-pressed="${k===period}">${l}, 2026</button>`).join("");
+  const rows=d.rules.map(r=>{const per=d.per[r.id];const n=per.weeks.slice(o,o+4).reduce((a,b)=>a+b,0);const prev=o?per.weeks.slice(0,4).reduce((a,b)=>a+b,0):null;return{r,per,n,prev,closed:Math.round(n*per.close)}});
+  const vid=rows.filter(x=>x.r.base),tot=vid.reduce((a,x)=>a+x.n,0),cl=vid.reduce((a,x)=>a+x.closed,0),open=tot-cl;
+  const prevTot=o?vid.reduce((a,x)=>a+x.prev,0):null;
+  const need=rows.filter(x=>!x.r.base).map(x=>x.r.name.toLowerCase());
+  const off=rows.filter(x=>!x.per.on).map(x=>x.r.name.toLowerCase());
+  const best=vid.slice().sort((a,b)=>b.n-a.n)[0];
+  const sum=`${s.name} recorded ${tot} alerts under ${vid.length} video-monitored rules in ${p[1].toLowerCase()}${prevTot!==null?`, ${tot<=prevTot?"down":"up"} from ${prevTot} in the previous four weeks`:""}. ${cl} (${tot?pct(cl/tot):"0%"}) were closed within 24 hours and ${open} took longer. ${best.r.name} had the most alerts (${best.n}). Every alert is linked to its clip in the evidence ledger, and the ledger chain verified with no breaks.`;
+  repText=`Compliance evidence report: ${s.name}, ${p[1]}, 2026\n\n${sum}${need.length?`\n\nNot covered by video: ${need.join(", ")}. These need the permit-to-work link.`:""}`;
+  $("#report").innerHTML=`<h2>Compliance evidence report: ${s.name}</h2>
+  <p class="meta">${p[1]}, 2026 · ${s.kind} · ${s.cams} cameras · Prepared for the site HSE lead · Sample report${NB&&NB.site===site?` · MCC for ${rows.filter(x=>x.per.nb).length} rules measured in the notebook (simulated site, not field clips)`:""}</p>
+  <p class="sum">${sum}</p>
+  <div class="kpis">${[[tot,"Alerts"],[tot?pct(cl/tot):"0%","Closed within 24 hours"],[avgMcc(site).toFixed(2),"Average MCC, video rules"],[tot+" of "+tot,"Alerts with linked evidence"]].map(([v,l])=>`<div class="kpi"><div class="big">${v}</div><span>${l}</span></div>`).join("")}</div>
+  <h3 style="margin-top:8px">By rule</h3>
+  <div class="scroll"><table class="stack"><thead><tr><th>Rule</th><th>Priority</th><th class="n">Alerts</th><th class="n">Closed in 24 h</th><th class="n">Median close</th><th class="n">MCC / floor</th></tr></thead><tbody>
+  ${rows.slice().sort((a,b)=>(a.r.hz||"Z").localeCompare(b.r.hz||"Z")).map(x=>{const m=x.per.cm?mcc(x.per.cm):null,fl=floorOf(x.r);return `<tr><td data-l="Rule">${x.r.hz?x.r.hz+" ":""}${x.r.name}${x.per.on?"":" (switched off)"}${x.r.base?"":` <span class="badge b-needs">Needs PTW data</span>`}</td><td data-l="Priority">${x.r.pri||"–"}</td><td class="n" data-l="Alerts">${x.r.base?x.n:"–"}</td><td class="n" data-l="Closed in 24 h">${x.r.base?(x.n?pct(x.closed/x.n):"–"):"–"}</td><td class="n" data-l="Median close">${x.r.base&&x.n?x.per.med.toFixed(1)+" h":"–"}</td><td class="n" data-l="MCC / floor">${m===null?"–":`<span style="color:${m>=fl?"var(--ok)":"var(--bad)"}">${m.toFixed(2)}</span> / ${fl.toFixed(2)}`}</td></tr>`}).join("")}
+  </tbody></table></div>
+  <h3 style="margin-top:22px">Evidence and limits</h3>
+  <p class="okline">Ledger chain verified: ${tot} entries, no breaks.</p>
+  <p>${tot} near-miss records written this period, one per alert, ready for the TRIR, LTIF and near-miss-rate reporting the operator already tracks. ${(()=>{const v=rows.filter(x=>x.per.cm),ok=v.filter(x=>mcc(x.per.cm)>=floorOf(x.r));return `${ok.length} of ${v.length} video rules meet their MCC floor (P1 0.85, P2 0.75, P3 0.60; other rules 0.80).`})()}</p>
+  <p>${need.length?`Not covered by video: ${need.join(", ")}. These rules need the permit-to-work or control-system link and aren't reported here.`:"All rules switched on at this site are covered by video."}${off.length?` Switched off this period: ${off.join(", ")}.`:""}</p>
+  <p>Cameras can't see invisible gas, process-safety layers or the quality of paperwork. VG360 works alongside those systems and doesn't replace them.</p>
+  <h3 style="margin-top:22px">Open questions for the pilot</h3>
+  <ul><li>Which rig type comes first: jack-up, platform or FPSO?</li><li>Does the permit-to-work system have an API for the H08 cross-check?</li><li>Are gas-detector alarms available as a feed for H05?</li><li>Do target GCC sites use hard-hat colour for new hands (H04)?</li><li>Are ATEX/IECEx-rated cameras already on the rig floor?</li><li>Who receives P1 alerts on site: driller, toolpusher or OIM?</li></ul>
+  <p class="note">The formal checks show that each alert follows from the rule and its detections. Detection accuracy is reported separately as MCC on this site's validation clips. "Median close" is the time from alert to closure by the site.</p>`;
+}
+$("#periods").addEventListener("click",e=>{const b=e.target.closest("[data-per]");if(!b)return;period=b.dataset.per;renderReport()});
+$("#copyRep").addEventListener("click",()=>copyText(repText,$("#repCopied"),null));
+
+/* notebook export (vg360_clifford_safety_cpu.ipynb §7b) */
+const NB_EMBED={"vg360_notebook_export": 1, "generated": "2026-11-23T08:19:36", "source": "notebook simulated site (noisy projected boxes; bodies share the fall-fitter's shape)", "rules": {"lift": {"hz": "H01", "pri": "P1", "name": "Person under a suspended load", "en": "If a load is suspended by Crane 1 and a person is inside suspended_load for more than 3 seconds, then raise a lifting alert.", "fol": "∀p ∀t. Person(p) ∧ Suspended(load(Crane 1), t) ∧ InZoneFor(p, suspended_load, t, 3s) → Alert(lifting, p, t)", "floor": 0.85, "cm": [154, 93, 7, 7764], "validated_on": "notebook simulated site (noisy projected boxes; bodies share the fall-fitter's shape)", "mcc": 0.7669048365866583}, "red": {"hz": "H02", "pri": "P1", "name": "Red zone during pipe handling", "en": "If a person enters the red zone on pump_skid_keepout while pipe handling is active, then alert the driller.", "fol": "∀p ∀t. Person(p) ∧ Active(pipe handling, t) ∧ In(p, redzone(pump_skid_keepout), t) → Alert(red_zone, p, t)", "floor": 0.85, "cm": [570, 114, 4, 7330], "validated_on": "notebook simulated site (noisy projected boxes; bodies share the fall-fitter's shape)", "mcc": 0.9023474523462174}, "edge": {"hz": "", "pri": null, "name": "Unguarded deck edge", "en": "If a person is within 1.0 metres of an unguarded deck edge in rig_edge, then raise an edge alert.", "fol": "∀p ∀t. Person(p) ∧ In(p, rig_edge, t) ∧ ∃e. UnguardedEdge(e) ∧ Dist(p, e, t) ≤ 1.0 → Alert(edge, p, t)", "floor": 0.8, "cm": [664, 139, 3, 7212], "validated_on": "notebook simulated site (noisy projected boxes; bodies share the fall-fitter's shape)", "mcc": 0.8984086180147024}, "fall": {"hz": "H06", "pri": "P2", "name": "Slip, trip or person down", "en": "If a person in site falls and stays down for 2 seconds, or a fluid spill is detected on a walkway, then raise an alert and record a near-miss.", "fol": "∀t. (∃p. Person(p) ∧ In(p, site, t) ∧ For(Down(p), t, 2s)) ∨ Spill(walkway(site), t) → Alert(fall_or_spill, site, t)", "floor": 0.75, "cm": [266, 58, 149, 7545], "validated_on": "notebook simulated site (noisy projected boxes; bodies share the fall-fitter's shape)", "mcc": 0.712527505481057}, "ppe": {"hz": "H03", "pri": "P1", "name": "Missing PPE", "en": "If a person in site is not wearing a hard hat for 15 consecutive frames, then notify the supervisor and log a PPE alert.", "fol": "∀p ∀t. Person(p) ∧ In(p, site, t) ∧ ForFrames(¬Wearing(p, a hard hat), t, 15) → Alert(ppe, p, t)", "floor": 0.85, "cm": [459, 42, 48, 451], "validated_on": "PPE crop test set: synthetic (smoke test)", "mcc": 0.8200540091801047}}, "ledger": [{"time": "0.0", "rule": "edge", "who": "Track 1", "clip": "sim-0", "prev": "0000000000000000000000000000000000000000000000000000000000000000", "hash": "e7a4301315a4913d604d5190a63e7a92ccd45e07e445cee403d52e222cf6596c"}, {"time": "0.0", "rule": "edge", "who": "Track 4", "clip": "sim-0", "prev": "e7a4301315a4913d604d5190a63e7a92ccd45e07e445cee403d52e222cf6596c", "hash": "db0bee8df15cb81625a59c190ba7e420628d4202803a73e0f6344a4e1d3cf442"}, {"time": "0.0", "rule": "red", "who": "Track 7", "clip": "sim-0", "prev": "db0bee8df15cb81625a59c190ba7e420628d4202803a73e0f6344a4e1d3cf442", "hash": "9119a510d60ca7d34497b20ee84c2674f00729edd15934fc75ad738b20fc9775"}, {"time": "0.0", "rule": "edge", "who": "Track 12", "clip": "sim-0", "prev": "9119a510d60ca7d34497b20ee84c2674f00729edd15934fc75ad738b20fc9775", "hash": "f5351deb678dc71145de828fd8528dc830678944177e5bd6a495931f3a749c8a"}, {"time": "0.5", "rule": "red", "who": "Track 14", "clip": "sim-5", "prev": "f5351deb678dc71145de828fd8528dc830678944177e5bd6a495931f3a749c8a", "hash": "575ec36407f58980e1bb1a44602e597a3c7da5585131898ddbf296081a36ac9b"}, {"time": "2.0", "rule": "red", "who": "Track 2", "clip": "sim-20", "prev": "575ec36407f58980e1bb1a44602e597a3c7da5585131898ddbf296081a36ac9b", "hash": "7141bb2e381437fae6dfa89ef922dbbf0a804d20503105b901c98cb60f1f92a1"}, {"time": "2.8", "rule": "red", "who": "Track 11", "clip": "sim-28", "prev": "7141bb2e381437fae6dfa89ef922dbbf0a804d20503105b901c98cb60f1f92a1", "hash": "c40a943673aa38bef80fc583151b3355899888844cd1fbb1a27afd82ac7a6b22"}, {"time": "2.9", "rule": "red", "who": "Track 3", "clip": "sim-29", "prev": "c40a943673aa38bef80fc583151b3355899888844cd1fbb1a27afd82ac7a6b22", "hash": "fcfead90282d7965d585ffe71e7c7e4fb07d6a9911a3a0723a655e911b52ddb0"}, {"time": "4.6", "rule": "red", "who": "Track 5", "clip": "sim-46", "prev": "fcfead90282d7965d585ffe71e7c7e4fb07d6a9911a3a0723a655e911b52ddb0", "hash": "de866a3f0a35c224c00f5d281c0f8c5783462c2db494f72cd692fede122447f9"}, {"time": "6.4", "rule": "red", "who": "Track 8", "clip": "sim-64", "prev": "de866a3f0a35c224c00f5d281c0f8c5783462c2db494f72cd692fede122447f9", "hash": "79cd8ef03c5e710b9e1320ee93e408c7ae33b3d0714a707ea3ecfb8b06bac47b"}, {"time": "6.9", "rule": "lift", "who": "Track 12", "clip": "sim-69", "prev": "79cd8ef03c5e710b9e1320ee93e408c7ae33b3d0714a707ea3ecfb8b06bac47b", "hash": "76ba4752e982f0b021589dc7a946f40009826a1ffeacce2d607d8cab0597e2d2"}, {"time": "8.2", "rule": "red", "who": "Track 9", "clip": "sim-82", "prev": "76ba4752e982f0b021589dc7a946f40009826a1ffeacce2d607d8cab0597e2d2", "hash": "9b90f301d5a806bdc60c7ac04392ea8a35a4f9ceaa576141f9a625ac126da458"}, {"time": "8.8", "rule": "edge", "who": "Track 10", "clip": "sim-88", "prev": "9b90f301d5a806bdc60c7ac04392ea8a35a4f9ceaa576141f9a625ac126da458", "hash": "28f785624e2d1026e0bf71bf1733f0bd88b4e88e6e83530484dd87f8520f6324"}, {"time": "9.8", "rule": "red", "who": "Track 6", "clip": "sim-98", "prev": "28f785624e2d1026e0bf71bf1733f0bd88b4e88e6e83530484dd87f8520f6324", "hash": "19a34d0bf73a7d38bfccad37decc76740cc3b6e10cf09045dcf67bcd809b2d5c"}, {"time": "11.8", "rule": "red", "who": "Track 8", "clip": "sim-118", "prev": "19a34d0bf73a7d38bfccad37decc76740cc3b6e10cf09045dcf67bcd809b2d5c", "hash": "d6e43d2e97c1e873f040be3e282d1a20c3e76da48a08574780ea89e3021cb614"}, {"time": "12.7", "rule": "red", "who": "Track 15", "clip": "sim-127", "prev": "d6e43d2e97c1e873f040be3e282d1a20c3e76da48a08574780ea89e3021cb614", "hash": "d77ca397f6c5f7fd9b10a9138b33d2240ddaca0b20d1ff5a512f0b77699daeb6"}, {"time": "13.6", "rule": "red", "who": "Track 3", "clip": "sim-136", "prev": "d77ca397f6c5f7fd9b10a9138b33d2240ddaca0b20d1ff5a512f0b77699daeb6", "hash": "64f02bee2c05c3157923b96b102bd284ba7cec29aec156fd7e858470fa32e6dd"}, {"time": "14.9", "rule": "red", "who": "Track 4", "clip": "sim-149", "prev": "64f02bee2c05c3157923b96b102bd284ba7cec29aec156fd7e858470fa32e6dd", "hash": "c5d87d16516c979790821ab57d4d3540b135a28e0acbf6aa3aad2e61f1ccdb58"}, {"time": "18.7", "rule": "lift", "who": "Track 7", "clip": "sim-187", "prev": "c5d87d16516c979790821ab57d4d3540b135a28e0acbf6aa3aad2e61f1ccdb58", "hash": "9be64511c489785f5bf5ed9b60d9bb427e25b3e3b913d5b543694aa1990ee7f3"}, {"time": "19.6", "rule": "lift", "who": "Track 14", "clip": "sim-196", "prev": "9be64511c489785f5bf5ed9b60d9bb427e25b3e3b913d5b543694aa1990ee7f3", "hash": "d45e4c7bad166d1046c4ea4254cdf246e494a0bcf58aee302ea94238ab8beb41"}, {"time": "20.2", "rule": "lift", "who": "Track 5", "clip": "sim-202", "prev": "d45e4c7bad166d1046c4ea4254cdf246e494a0bcf58aee302ea94238ab8beb41", "hash": "720562997ba675b916dd85c4d72f6925d337050be994cb927ba5badcc6794319"}, {"time": "20.9", "rule": "edge", "who": "Track 14", "clip": "sim-209", "prev": "720562997ba675b916dd85c4d72f6925d337050be994cb927ba5badcc6794319", "hash": "31516dd37466250359d8c4f02a61531a77c9ad3b6cf38b60494a2323bb9efa11"}, {"time": "21.7", "rule": "lift", "who": "Track 10", "clip": "sim-217", "prev": "31516dd37466250359d8c4f02a61531a77c9ad3b6cf38b60494a2323bb9efa11", "hash": "01b886ee4b5530648bd1909e637599d52a82d3684caaf21bddc61f008977faf8"}, {"time": "22.1", "rule": "fall", "who": "Track 5", "clip": "sim-221", "prev": "01b886ee4b5530648bd1909e637599d52a82d3684caaf21bddc61f008977faf8", "hash": "e18a98ce067a2032949ab2cd484e7ccd02a7347731604862f14bbd497b8841d2"}, {"time": "24.1", "rule": "lift", "who": "Track 8", "clip": "sim-241", "prev": "e18a98ce067a2032949ab2cd484e7ccd02a7347731604862f14bbd497b8841d2", "hash": "873af56248aaf9f15acc92e37898ea0673f97c9c2fa91c0e4cd05758ce59b40e"}, {"time": "24.2", "rule": "edge", "who": "Track 8", "clip": "sim-242", "prev": "873af56248aaf9f15acc92e37898ea0673f97c9c2fa91c0e4cd05758ce59b40e", "hash": "b52519f99c053fd29522b430b75d1432e60cc5eb347c49776491b538707fc3a3"}, {"time": "24.6", "rule": "edge", "who": "Track 11", "clip": "sim-246", "prev": "b52519f99c053fd29522b430b75d1432e60cc5eb347c49776491b538707fc3a3", "hash": "beae00e152162e3a5d8f4593df257739d893d13e387ec3538ed80e107a5620f5"}, {"time": "27.4", "rule": "edge", "who": "Track 16", "clip": "sim-274", "prev": "beae00e152162e3a5d8f4593df257739d893d13e387ec3538ed80e107a5620f5", "hash": "0072944086ef9c15f702accc89ecff8b34031d1e92d48497883b55a211bbe23f"}, {"time": "29.4", "rule": "fall", "who": "Track 16", "clip": "sim-294", "prev": "0072944086ef9c15f702accc89ecff8b34031d1e92d48497883b55a211bbe23f", "hash": "999934e985d2eebd9571f07ef2e52b24c77530c8922e71545ec3768069b6972a"}, {"time": "29.5", "rule": "fall", "who": "Track 7", "clip": "sim-295", "prev": "999934e985d2eebd9571f07ef2e52b24c77530c8922e71545ec3768069b6972a", "hash": "7f1d99b638f9066aa7ff84021c6cda21471bfe075ba2056df8a25631fd9893a9"}, {"time": "30.0", "rule": "red", "who": "Track 7", "clip": "sim-300", "prev": "7f1d99b638f9066aa7ff84021c6cda21471bfe075ba2056df8a25631fd9893a9", "hash": "48af262d76a28df2c8b788f1073f8b5c068e8a22cda9a3973264c3832add1a57"}, {"time": "30.8", "rule": "red", "who": "Track 11", "clip": "sim-308", "prev": "48af262d76a28df2c8b788f1073f8b5c068e8a22cda9a3973264c3832add1a57", "hash": "6550f20a725d728941e45331616abd72854e350f0ac900444b380a1fb78472e8"}, {"time": "31.6", "rule": "red", "who": "Track 4", "clip": "sim-316", "prev": "6550f20a725d728941e45331616abd72854e350f0ac900444b380a1fb78472e8", "hash": "418c93d3623214fae14549ae41f6c873ee4ac5394a3766cd705f820e5cbc1264"}, {"time": "33.2", "rule": "fall", "who": "Track 8", "clip": "sim-332", "prev": "418c93d3623214fae14549ae41f6c873ee4ac5394a3766cd705f820e5cbc1264", "hash": "c231e1e1e224446d1955ebcecf0211d0ff7639b8db1a0d244aa070512cd8e663"}, {"time": "33.3", "rule": "fall", "who": "Track 2", "clip": "sim-333", "prev": "c231e1e1e224446d1955ebcecf0211d0ff7639b8db1a0d244aa070512cd8e663", "hash": "28e14f7c013e83f807978c80e72ae598a3ee54a74aac9ec85d1616a99459f656"}, {"time": "33.8", "rule": "red", "who": "Track 14", "clip": "sim-338", "prev": "28e14f7c013e83f807978c80e72ae598a3ee54a74aac9ec85d1616a99459f656", "hash": "7f7cd0fd297ed1337b563bacd24847a022b0b565c4fc085102d680541247ed06"}, {"time": "34.1", "rule": "fall", "who": "Track 17", "clip": "sim-341", "prev": "7f7cd0fd297ed1337b563bacd24847a022b0b565c4fc085102d680541247ed06", "hash": "ac2edc7851f02dce9ccebcf04f7812d75582de9295b458786922956eafb3a073"}, {"time": "34.2", "rule": "edge", "who": "Track 5", "clip": "sim-342", "prev": "ac2edc7851f02dce9ccebcf04f7812d75582de9295b458786922956eafb3a073", "hash": "152aa935c6d0714c62f2c647eaaba73647ebf3a63bddcbf66298cd64eba551b5"}, {"time": "34.5", "rule": "edge", "who": "Track 9", "clip": "sim-345", "prev": "152aa935c6d0714c62f2c647eaaba73647ebf3a63bddcbf66298cd64eba551b5", "hash": "c3392166ba982e3fd4935d8e1e1311cc0f526b46ae39188d2afab8addad798dd"}, {"time": "34.6", "rule": "edge", "who": "Track 3", "clip": "sim-346", "prev": "c3392166ba982e3fd4935d8e1e1311cc0f526b46ae39188d2afab8addad798dd", "hash": "b6b96dc8d9207b67a1467a2d178003f15a802ef2e3760e36cf3e14d9a6b36a67"}, {"time": "34.9", "rule": "red", "who": "Track 11", "clip": "sim-349", "prev": "b6b96dc8d9207b67a1467a2d178003f15a802ef2e3760e36cf3e14d9a6b36a67", "hash": "ced2ff81bb6f9fdcdab1493677cd1e85bd781b343c3420b1e36b4bb374e2d09a"}, {"time": "39.0", "rule": "fall", "who": "Track 9", "clip": "sim-390", "prev": "ced2ff81bb6f9fdcdab1493677cd1e85bd781b343c3420b1e36b4bb374e2d09a", "hash": "1cb68ac754677c8e97aabb552556b34b125b7f9fb61998b1b6d8861a53351807"}, {"time": "41.3", "rule": "edge", "who": "Track 1", "clip": "sim-413", "prev": "1cb68ac754677c8e97aabb552556b34b125b7f9fb61998b1b6d8861a53351807", "hash": "566fde5e8f9a4cb77721de544b315ae5d74af097e762f989c2ea7792e654f570"}, {"time": "42.3", "rule": "red", "who": "Track 2", "clip": "sim-423", "prev": "566fde5e8f9a4cb77721de544b315ae5d74af097e762f989c2ea7792e654f570", "hash": "bbbf1e7dc50ffd375704fdc42ba71217080e040cace6a35112fd6f1f7d4fd4c6"}, {"time": "45.2", "rule": "lift", "who": "Track 5", "clip": "sim-452", "prev": "bbbf1e7dc50ffd375704fdc42ba71217080e040cace6a35112fd6f1f7d4fd4c6", "hash": "85194b4e402bd818afcde2ab6c800f75e5d3badfcab99eb0d45a0364d3762041"}, {"time": "46.0", "rule": "lift", "who": "Track 9", "clip": "sim-460", "prev": "85194b4e402bd818afcde2ab6c800f75e5d3badfcab99eb0d45a0364d3762041", "hash": "f9e0182a0141517dee9f2e42bfda17ca26aed0216dee52b7e0781c40fb6137a4"}, {"time": "46.1", "rule": "red", "who": "Track 8", "clip": "sim-461", "prev": "f9e0182a0141517dee9f2e42bfda17ca26aed0216dee52b7e0781c40fb6137a4", "hash": "1032ec403089f5d0b5a5290af45a05043cabd0dbbcecbc4b8080d950becc5b39"}, {"time": "47.6", "rule": "lift", "who": "Track 16", "clip": "sim-476", "prev": "1032ec403089f5d0b5a5290af45a05043cabd0dbbcecbc4b8080d950becc5b39", "hash": "9e582fa2883ab44f1b71af6481c8b516d5d71d8cb6a47803dd6dca8333d3a95d"}, {"time": "47.6", "rule": "lift", "who": "Track 7", "clip": "sim-476", "prev": "9e582fa2883ab44f1b71af6481c8b516d5d71d8cb6a47803dd6dca8333d3a95d", "hash": "ffcc81a05afb15984805d2f05464f0a981d95acf9970a3b45b5cec28e07d8b1c"}, {"time": "48.3", "rule": "edge", "who": "Track 7", "clip": "sim-483", "prev": "ffcc81a05afb15984805d2f05464f0a981d95acf9970a3b45b5cec28e07d8b1c", "hash": "8ec837b3e381b20a47e4762d9ab7955f9157130f8f75889dd24842d39eeef764"}, {"time": "53.8", "rule": "lift", "who": "Track 6", "clip": "sim-538", "prev": "8ec837b3e381b20a47e4762d9ab7955f9157130f8f75889dd24842d39eeef764", "hash": "a03a207892f82c8ad1f1b61222f099f0445c64e80c145d512e6ed2f8f6662601"}, {"time": "56.1", "rule": "edge", "who": "Track 19", "clip": "sim-561", "prev": "a03a207892f82c8ad1f1b61222f099f0445c64e80c145d512e6ed2f8f6662601", "hash": "4f171fe55e5555c74baa0310cd30562198832afee1257f8770400d05be01865b"}, {"time": "58.0", "rule": "lift", "who": "Track 14", "clip": "sim-580", "prev": "4f171fe55e5555c74baa0310cd30562198832afee1257f8770400d05be01865b", "hash": "670f03730fe764e9f3187c40b18dc7894afaeb3f3d6dff77f05af04103625f99"}], "ledger_verified": true};
+let NB=null;
+async function sha256hex(str){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(str));return[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")}
+function applyNB(exp,label){
+  if(!exp||exp.vg360_notebook_export!==1||!exp.rules||!Array.isArray(exp.ledger))throw new Error("not a VG360 notebook export");
+  const d=S();let n=0;
+  Object.entries(exp.rules).forEach(([id,r])=>{if(d.per[id]&&Array.isArray(r.cm)&&r.cm.length===4){d.per[id].cm=r.cm.map(Number);d.per[id].nb=String(r.validated_on||exp.source||"notebook");d.per[id].nbEn=String(r.en||"");n++}});
+  NB={site,exp,ledger:exp.ledger.map(e=>({...e})),tampered:false,checked:null};
+  $("#nbstat").textContent=`${label}: ${n} rule${n===1?"":"s"} at ${d.s.name} now use measured MCC; ${exp.ledger.length} ledger entries (generated ${String(exp.generated).replace("T"," ")}).`;
+  renderAll();verifyNB();
+}
+async function verifyNB(){if(!NB)return;let prev="0".repeat(64),ok=true;
+  for(const e of NB.ledger){const h=await sha256hex(JSON.stringify([e.time,e.rule,e.who,e.clip,e.prev]));if(e.prev!==prev||h!==e.hash){ok=false;break}prev=e.hash}
+  NB.checked=ok;renderNB()}
+function renderNB(){const p=$("#nbpanel");if(!NB||NB.site!==site){p.hidden=true;return}p.hidden=false;
+  $("#nbmeta").textContent=`${NB.ledger.length} alerts from the notebook's rule engine. Each hash is SHA-256 of [time, rule, who, clip, prev hash], recomputed here in your browser.`;
+  $("#nbledger").innerHTML=NB.ledger.slice(-8).reverse().map(e=>`<li><b>t = ${esc(e.time)} s</b> · ${esc(e.rule)} · ${esc(e.who)} · clip ${esc(e.clip)}<span class="mono">sha256 ${esc(e.hash)}</span><span class="mono">prev ${esc(e.prev)}</span></li>`).join("");
+  $("#nbchk").style.color=NB.checked?"var(--ok)":"var(--bad)";
+  $("#nbchk").textContent=NB.checked===null?"":NB.checked?"Chain verified: every SHA-256 matches.":"Chain broken: an entry no longer matches its hash.";
+  $("#nbtamper").textContent=NB.tampered?"Undo the edit":"Edit an old entry"}
+$("#nbfile").addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;try{applyNB(JSON.parse(await f.text()),f.name)}catch(err){$("#nbstat").textContent="Couldn't load that file: "+err.message}e.target.value=""});
+document.querySelector('label[for="nbfile"]').addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("#nbfile").click()}});
+$("#nbdemo").addEventListener("click",()=>applyNB(JSON.parse(JSON.stringify(NB_EMBED)),"Latest notebook run"));
+$("#nbverify").addEventListener("click",verifyNB);
+$("#nbtamper").addEventListener("click",()=>{if(!NB||!NB.ledger.length)return;NB.tampered=!NB.tampered;NB.ledger[0].who=NB.tampered?"Track 999":NB.exp.ledger[0].who;verifyNB()});
+
+/* site + tabs */
+$("#site").innerHTML=SITES.map(s=>`<option value="${s.id}">${s.name} · ${s.kind}</option>`).join("");
+function setSite(id){site=id;$("#site").value=id;building=false;tampered=false;renderAll()}
+$("#site").addEventListener("change",e=>setSite(e.target.value));
+function renderAll(){renderOverview();renderList();renderDetail();renderEngine();renderClips();renderReport();renderNB()}
+const VIEWS=["overview","rules","engine","clips","report"];
+function show(v){if(!VIEWS.includes(v))v="overview";VIEWS.forEach(x=>{$("#v-"+x).hidden=x!==v;$("#t-"+x).setAttribute("aria-selected",x===v)});if(v==="clips")renderClips()}
+function go(v){show(v);try{history.replaceState(null,"","#"+v)}catch(err){location.hash=v}window.scrollTo(0,0)}
+document.querySelector(".tabs").addEventListener("click",e=>{const b=e.target.closest("[data-v]");if(b)go(b.dataset.v)});
+window.addEventListener("hashchange",()=>show(location.hash.slice(1)));
+renderAll();show(location.hash.slice(1));
+}
+
+/* VG360 console: when served by the site console, load the live rules (compiled and approved in
+   iogp-editor), their validated MCC and the evidence chain from the server. */
+(function(){
+  const live=location.protocol.startsWith("http")&&!location.hostname.endsWith("claude.ai");
+  if(!live)return;
+  fetch("/api/rule-studio").then(r=>r.ok?r.json():null).then(j=>{if(j){applyNB(j,"Live site (iogp-editor rules)")}}).catch(()=>{});
+})();
+</script>
+</body>
+</html>

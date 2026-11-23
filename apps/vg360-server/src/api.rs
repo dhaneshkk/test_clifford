@@ -41,9 +41,10 @@ pub fn answer(site: &Site, q: &str) -> String {
         }
     }
     if q.contains("rule") || q.contains("mcc") || q.contains("armed") {
-        for (id, r) in &site.rules {
-            out.push(format!("{id}: {} — MCC {:.3} vs floor {:.2} → {}", r.name, r.mcc.unwrap_or(0.0), r.floor,
-                if r.passes_floor() { "armed" } else { "shadow" }));
+        if site.iogp.draft { out.push("Rules config is a draft (not approved in iogp-editor): all rules run in shadow mode.".into()); }
+        for r in &site.iogp.rules {
+            out.push(format!("{}: {} — MCC {:.3} vs floor {:.2}, {} → {}", r.id, r.text, r.mcc.unwrap_or(0.0), r.floor,
+                if r.approved_by.is_some() { "approved" } else { "draft" }, if r.armed { "armed" } else { "shadow" }));
         }
     }
     if q.contains("alert") || q.contains("ledger") || q.contains("evidence") {
@@ -76,10 +77,7 @@ pub async fn chat(cx: &Cx, Json(req): Json<ChatReq>) -> Result<Json<Value>> {
 #[route(GET "/v1/rules")]
 pub async fn rules(cx: &Cx) -> Result<Json<Value>> {
     let site = context::<Site>(cx);
-    let rules: Vec<Value> = site.rules.iter().map(|(id, r)| json!({
-        "id": id, "name": r.name, "priority": r.pri, "floor": r.floor, "mcc": r.mcc, "armed": r.passes_floor(), "fol": r.fol
-    })).collect();
-    Ok(Json(json!({"rules": rules})))
+    Ok(Json(json!({"config_sha256": site.iogp.sha256, "draft": site.iogp.draft, "rules": site.iogp.rules})))
 }
 
 #[route(GET "/v1/ledger")]
@@ -95,4 +93,46 @@ pub async fn cameras(cx: &Cx) -> Result<Json<Value>> {
         "id": c.id, "name": c.name, "guard": c.guard, "analytics": c.mode,
         "pose": c.pose, "guidance": c.guidance(), "rules": c.rules, "url_env": c.env_var()
     })).collect::<Vec<_>>()})))
+}
+
+// ───────────────────────────── Rig Twin and Rule Studio data
+
+#[route(GET "/api/twin")]
+pub async fn twin_get(cx: &Cx) -> Result<Json<Value>> {
+    let site = context::<Site>(cx);
+    let t = site.twin.read().unwrap();
+    Ok(Json(match t.as_ref() {
+        Some(t) => json!({ "twin": t.json, "applied_at": t.applied_at, "source": t.source }),
+        None => json!({ "twin": null }),
+    }))
+}
+
+#[route(POST "/api/twin")]
+pub async fn twin_apply(cx: &Cx, Json(v): Json<Value>) -> Result<Json<Value>> {
+    let site = context::<Site>(cx);
+    Ok(Json(site.apply_twin(v).unwrap_or_else(|e| json!({ "ok": false, "error": e }))))
+}
+
+/// Rule Studio's `vg360_notebook_export` format, filled from the live IOGP rules and their validation.
+#[route(GET "/api/rule-studio")]
+pub async fn rule_studio(cx: &Cx) -> Result<Json<Value>> {
+    let site = context::<Site>(cx);
+    let hz = |id: &str| match id { "LIFT" => "H01", "RED" => "H02", "PPE" => "H03", "FALL" => "H06", _ => "" };
+    let by_id: serde_json::Map<String, Value> = site.iogp.rules.iter().map(|r| (r.id.to_lowercase(), json!({
+        "hz": hz(&r.id), "pri": r.tier, "name": r.alert, "en": r.text, "fol": r.fol, "floor": r.floor, "cm": r.cm,
+        "validated_on": r.validated_on, "mcc": r.mcc, "approved_by": r.approved_by, "armed": r.armed
+    }))).collect();
+    Ok(Json(json!({
+        "vg360_notebook_export": 1, "generated": "live", "source": format!("site console · iogp-editor config {}", site.iogp.config_path),
+        "rules": by_id, "ledger": site.ledger.entries, "ledger_verified": matches!(site.ledger_check, vg360_geom::ledger::Verify::Ok { .. })
+    })))
+}
+
+#[route(GET "/api/evidence")]
+pub async fn evidence(cx: &Cx) -> Result<Json<Value>> {
+    let site = context::<Site>(cx);
+    Ok(Json(match &site.vesdb {
+        None => json!({ "connected": false }),
+        Some(v) => json!({ "connected": true, "url": v.base, "rig": v.rig, "checkpoint": v.checkpoint().ok() }),
+    }))
 }

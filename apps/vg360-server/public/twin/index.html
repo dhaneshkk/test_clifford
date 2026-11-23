@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VG360 Rig Twin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+/* VOICE work: an engineering tool for the HSE lead and the CCTV designer, same family as VG360 Rule Studio
+   IDEA a control-room console where the rig is drawn from standard parts and the analytics fall out of the drawing
+   PICTURE the live plan: components, hazard zones, hazardous-area rings, camera wedges, computed detection coverage
+   COLOUR white or near-black ground, deep steel header band, safety orange accent, teal coverage, green/amber/red status
+   TYPE Barlow Condensed for titles and figures, Barlow for text, JetBrains Mono for ids and config
+   LAYOUT steel band (title, preset, finding) → palette | plan | inspector → tabs: analytics config, alert forecast, checks, export */
+:root{color-scheme:light dark;--bg:light-dark(#ffffff,#0f1214);--ink:light-dark(#14171a,#eef1f3);--mute:light-dark(#56616b,#9ba7b1);--line:light-dark(#dde2e5,#283035);--panel:light-dark(#f3f5f6,#161b1e);--acc:light-dark(#e2531a,#ff6a2b);--ok:light-dark(#1d7a4c,#4cc08a);--warn:light-dark(#a86c12,#f0b44c);--bad:light-dark(#c0341a,#ff6b50);--steel:#14303c;--teal:light-dark(#0f6f78,#3fc0c9);--ground:light-dark(#efe6d1,#1d1a14);--blk:light-dark(#d9d2c1,#3a352b)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.5 Barlow,system-ui,sans-serif;overflow-x:clip}
+h1,h2,h3{font-family:"Barlow Condensed",Barlow,sans-serif;line-height:1.05;margin:0}
+h1{font-size:clamp(30px,4vw,44px)}h2{font-size:clamp(26px,3vw,34px);margin-bottom:8px}h3{font-size:20px;margin:0 0 8px}
+code,.mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:13px}
+.top{background:var(--steel);color:#eef4f6;padding:clamp(16px,2.5vw,28px) max(3vw,14px) 0}
+.tophead{display:flex;flex-wrap:wrap;gap:12px 28px;align-items:end;justify-content:space-between;max-width:1400px;margin:0 auto}
+.top p{margin:6px 0 0;color:#b9cdd5;max-width:70ch}
+.finding{font-size:17px;color:#eef4f6!important}
+.presets{display:flex;flex-wrap:wrap;gap:8px}
+.top .btn.ghost{color:#eef4f6;border-color:#2f5666}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:2px;max-width:1400px;margin:16px auto 0}
+.kpi{background:#0d222b;padding:10px 14px}.kpi b{display:block;font:700 32px "Barlow Condensed",sans-serif;line-height:1}.kpi span{font-size:13.5px;color:#b9cdd5}
+main{max-width:1400px;margin:0 auto;padding:16px max(3vw,14px) 40px}
+.work{display:grid;grid-template-columns:200px minmax(0,1fr) 290px;gap:14px;align-items:start}
+.pal{display:flex;flex-direction:column;gap:6px}
+.pal h3{font-size:17px;margin-top:6px}
+.pi{display:flex;align-items:center;gap:8px;text-align:left;width:100%;font:500 14.5px Barlow,sans-serif;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:7px 10px;min-height:40px;cursor:pointer}
+.pi i{flex:none;width:14px;height:14px;border-radius:3px;border:1px solid var(--ink)}
+.pi:hover{border-color:var(--acc)}
+.planbox{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
+.fig{position:relative;height:min(70vh,660px);min-height:380px}.fig canvas,.fig svg{position:absolute;inset:0;width:100%;height:100%}.fig svg{touch-action:none}
+.bar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 12px;border-top:1px solid var(--line);font-size:14px}
+.key{display:flex;flex-wrap:wrap;gap:12px}.key i{display:inline-block;width:14px;height:11px;border-radius:2px;vertical-align:-1px;margin-right:4px;border:1px solid var(--line)}
+.insp{border:1px solid var(--line);border-radius:10px;padding:14px;background:var(--panel)}
+.insp .empty{color:var(--mute);font-size:15px}
+label{display:block;font-size:13.5px;color:var(--mute);margin-top:8px}
+input,select,textarea{display:block;width:100%;font:15px Barlow,sans-serif;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 9px;min-height:40px;margin-top:3px}
+input[type=range]{accent-color:var(--acc);padding:0;border:0;background:transparent;min-height:30px}
+.rng{display:grid;grid-template-columns:minmax(0,1fr) 4.2em;gap:8px;align-items:center}.rng output{font-family:"JetBrains Mono",monospace;font-size:13px;text-align:right;white-space:nowrap}
+.btn{font:600 15px Barlow,sans-serif;background:var(--acc);color:#fff;border:0;border-radius:8px;padding:8px 14px;min-height:42px;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn.sm{min-height:36px;padding:5px 10px;font-size:14px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.pi:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.tabs{display:flex;flex-wrap:wrap;gap:2px;margin:26px 0 0;border-bottom:1px solid var(--ink)}
+.tabs button{font:600 16px Barlow,sans-serif;color:var(--mute);background:transparent;border:0;border-radius:8px 8px 0 0;padding:10px 16px;min-height:44px;cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--ink);color:var(--bg)}
+.tabp{padding-top:18px}
+table{width:100%;border-collapse:collapse;font-size:15px}th{text-align:left;font-weight:600;color:var(--mute);font-size:13.5px;padding:7px 6px;border-bottom:1px solid var(--ink)}
+td{padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.scroll{overflow-x:auto}
+.badge{font:600 12.5px Barlow,sans-serif;border-radius:6px;padding:2px 7px;white-space:nowrap;display:inline-block;margin:1px 2px 1px 0}
+.s-live{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.s-part{background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--warn)}
+.s-none{background:color-mix(in srgb,var(--bad) 15%,transparent);color:var(--bad)}
+.s-feed{background:color-mix(in srgb,var(--mute) 20%,transparent);color:var(--mute)}
+.s-off{background:transparent;color:var(--mute);border:1px dashed var(--line)}
+.rtog{font:600 12.5px Barlow,sans-serif;border-radius:6px;padding:3px 8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer;margin:2px 3px 2px 0;min-height:30px}
+.hb{height:12px;background:var(--line);border-radius:3px;position:relative;min-width:60px}.hb i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--teal)}
+.fc{display:grid;grid-template-columns:minmax(0,15em) minmax(0,1fr) 4.5em 4.5em 4.5em;gap:6px 10px;align-items:center;font-size:14.5px}
+.fc .hd{color:var(--mute);font-size:13px;font-weight:600}
+.stk{display:flex;height:16px;border-radius:3px;overflow:hidden;background:var(--line)}.stk i{display:block;height:100%}
+.ass{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:10px 0 16px}
+.chk{list-style:none;margin:0;padding:0}.chk li{padding:8px 0;border-bottom:1px solid var(--line);display:flex;gap:10px}.chk .mk{flex:none;width:20px;font-weight:700}
+pre{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;max-height:380px;font:12.5px/1.45 "JetBrains Mono",monospace;margin:8px 0}
+.note{font-size:13.5px;color:var(--mute);margin:8px 0 0;max-width:80ch}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px}
+[hidden]{display:none!important}
+@media(max-width:1100px){.work{grid-template-columns:170px minmax(0,1fr)}.insp{grid-column:1/-1}}
+@media(max-width:760px){.work{grid-template-columns:minmax(0,1fr)}.pal{flex-direction:row;flex-wrap:wrap}.pal h3{width:100%}.pi{width:auto}.grid2{grid-template-columns:minmax(0,1fr)}
+ .fc{grid-template-columns:minmax(0,1fr) 4em 4em 4em}.fc .bb{display:none}
+ table{font-size:13.5px}.stack thead{display:none}.stack tr{display:grid;padding-block:8px;border-bottom:1px solid var(--line)}.stack td{display:flex;justify-content:space-between;gap:12px;border:0;padding:3px 0;text-align:right}.stack td::before{content:attr(data-l);color:var(--mute);text-align:left}}
+</style>
+</head>
+<body>
+<header class="top">
+ <div class="tophead">
+  <div><h1>VG360 Rig Twin</h1><p class="finding" id="finding">Building…</p></div>
+  <div id="siteBar" style="display:none;align-self:center"><button class="btn" id="applySiteTop">Apply to site</button> <span id="siteMsg" class="note" style="margin:0 0 0 8px"></span></div>
+  <div class="presets"><button class="btn ghost" data-preset="land">Land rig, desert pad</button><button class="btn ghost" data-preset="offshore">Offshore jack-up deck</button><button class="btn ghost" data-preset="blank">Blank site</button></div>
+ </div>
+ <div class="kpis" id="kpis"></div>
+</header>
+
+<main>
+ <div class="work">
+  <nav class="pal" id="pal" aria-label="Standard components"></nav>
+  <div class="planbox">
+   <div class="fig" id="fig"><canvas id="cv"></canvas><svg id="sv" aria-label="Rig plan: components, hazard zones and cameras"></svg></div>
+   <div class="bar"><span class="key" id="key"></span><span style="flex:1"></span>
+    <label style="margin:0;display:flex;gap:6px;align-items:center;color:var(--ink)">Show<select id="layer" style="width:auto;min-height:36px;margin:0"><option value="count">Detection coverage</option><option value="multi">Fall-ready (2 views ≥45°)</option><option value="haz">Hazardous areas</option><option value="none">Plan only</option></select></label></div>
+  </div>
+  <aside class="insp" id="insp" aria-live="polite"></aside>
+ </div>
+
+ <div class="tabs" role="tablist"><button data-t="cfg" aria-selected="true">Analytics config</button><button data-t="fc" aria-selected="false">Alert forecast</button><button data-t="chk" aria-selected="false">Design checks</button><button data-t="exp" aria-selected="false">Export</button></div>
+
+ <section class="tabp" id="p-cfg">
+  <p class="note" style="margin-top:0">Every component brings the hazard zones and Rule Studio rules that go with it. Coverage comes from the cameras you placed. Click a rule to switch it on or off for that zone. Status: <span class="badge s-live">Live</span>at least 90% of the zone is detectable (two views for falls) · <span class="badge s-part">Partial</span>50–90% · <span class="badge s-none">No coverage</span>under 50% · <span class="badge s-feed">Needs feed</span>needs a gas, permit-to-work or control-system feed · <span class="badge s-off">Off</span></p>
+  <div class="scroll"><table class="stack"><thead><tr><th>Zone</th><th class="n">Detectable</th><th class="n">Fall-ready</th><th>Cameras</th><th>Rules</th></tr></thead><tbody id="cfg"></tbody></table></div>
+ </section>
+
+ <section class="tabp" id="p-fc" hidden>
+  <h2 id="fcTitle"></h2>
+  <p class="note" style="margin-top:0">A planning estimate, not a measurement. Weekly breaches start from Rule Studio's base rate for each rule, scaled by crew size and activity, and split across the zones that carry the rule. Coverage and each rule's recall decide how many become alerts. False alarms come from each rule's false-alarm-to-alert ratio. Five rules use the confusion matrices measured in the notebook (a simulated site). The rest use Rule Studio's sample values.</p>
+  <div class="ass" id="ass"></div>
+  <div class="fc" id="fcTable"></div>
+  <p class="note" id="fcFeed"></p>
+ </section>
+
+ <section class="tabp" id="p-chk" hidden>
+  <div class="grid2"><div><h3>Design checks</h3><ul class="chk" id="checks"></ul></div>
+  <div><h3>About the hazardous-area rings</h3><p class="note">Rings around shakers, the wellhead, mud tanks and fuel tanks stand in for Zone 1 (inner) and Zone 2 (outer) areas. Their radii are illustrative. The real boundaries come from the site's hazardous-area classification study (API RP 505 or IEC 60079-10-1), and any camera inside them must carry a matching Ex rating. The checks flag non-Ex cameras placed inside a ring.</p>
+  <p class="note">The coverage model includes mount height, pitch, field of view, sensor resolution, 416 px detector letterboxing and tiling, steep-view foreshortening, and the 8 m drill floor as its own surface. It leaves out blocking by equipment, dust, heat shimmer and glare.</p></div></div>
+ </section>
+
+ <section class="tabp" id="p-exp" hidden>
+  <div class="grid2">
+   <div><h3>Twin file</h3><p class="note" style="margin-top:0">The whole twin: layout, cameras, zones, rules and their switches, and assumptions. Copy it to keep a version, or paste one back to load it. The structure maps directly onto a domain plugin if you bring this into your digital-twin platform later.</p>
+    <div class="row"><button class="btn" id="applySite">Apply to site</button><button class="btn ghost" id="cpTwin">Copy twin JSON</button><button class="btn ghost" id="ldTwin">Load pasted JSON</button><span id="twinMsg" class="note" style="margin:0"></span></div>
+    <textarea id="twinTxt" rows="10" aria-label="Twin JSON" style="font:12.5px/1.45 'JetBrains Mono',monospace"></textarea></div>
+   <div><h3>Notebook config</h3><p class="note" style="margin-top:0">One <code>SCENES</code> entry per camera, with every covered zone moved into that camera's frame, up to six component corners for point calibration (replace the predicted pixels with the ones you measure), plus the rule switches for the notebook's Rule Studio engine (§7b). Paste after the notebook cell, set <code>CFG.scene</code> and <code>CFG.source</code>, then call <code>run_source()</code>.</p>
+    <div class="row"><button class="btn" id="cpPy">Copy notebook config</button><span id="pyMsg" class="note" style="margin:0"></span></div>
+    <pre id="py"></pre></div>
+  </div>
+ </section>
+ <p class="note" style="margin-top:28px">Presets are illustrative layouts, not engineering drawings. Base alert rates are Rule Studio's sample values: replace them with your own site history before you quote numbers.</p>
+</main>
+
+<script>
+{
+const $=id=>document.getElementById(id),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const f0=x=>Math.round(x),f1=x=>(+x).toFixed(1),D=Math.PI/180;
+/* ------------------------------------------------ rules (ids, priority, base rates and sample matrices from Rule Studio; 5 measured in the notebook) */
+const RULES={
+ lift:{hz:"H01",pri:"P1",n:"Person under a suspended load",cov:"strong",base:6,cm:[154,93,7,7764],src:"notebook"},
+ red:{hz:"H02",pri:"P1",n:"Red zone during pipe handling",cov:"strong",base:5,cm:[570,114,4,7330],src:"notebook"},
+ ppe:{hz:"H03",pri:"P1",n:"Missing PPE",cov:"strong",base:9,cm:[459,42,48,451],src:"notebook"},
+ fall:{hz:"H06",pri:"P2",n:"Slip, trip or person down",cov:"strong",base:2,cm:[266,58,149,7545],src:"notebook",twoView:true},
+ edge:{hz:"",pri:null,n:"Unguarded deck edge",cov:"strong",base:2,cm:[664,139,3,7212],src:"notebook"},
+ height:{hz:"H07",pri:"P2",n:"Work at height without a tie-off",cov:"strong",base:3,cm:[29,4,6,211],src:"sample"},
+ lof:{hz:"",pri:null,n:"Line of fire",cov:"strong",base:4,cm:[38,7,8,297],src:"sample"},
+ fork:{hz:"",pri:null,n:"Pedestrian near forklift",cov:"strong",base:5,cm:[41,6,5,301],src:"sample"},
+ excl:{hz:"",pri:"P2",n:"Person in exclusion zone",cov:"strong",base:2,cm:[46,5,6,343],src:"sample"},
+ muster:{hz:"H10",pri:"P2",n:"Slow or incomplete muster",cov:"strong",base:.5,cm:[18,2,2,120],src:"sample"},
+ drive:{hz:"",pri:null,n:"Site speed limit",cov:"partial",base:4,cm:[33,8,9,240],src:"sample"},
+ smoke:{hz:"",pri:null,n:"Ignition in a hazardous area",cov:"partial",base:1,cm:[9,3,4,140],src:"sample"},
+ hot:{hz:"H08",pri:"P2",n:"Hot work without a permit",cov:"partial",base:2,cm:[21,6,5,198],src:"sample",feed:"permit-to-work API for the permit check"},
+ conf:{hz:"H08",pri:"P2",n:"Confined-space entry",cov:"partial",base:1.5,cm:[17,5,7,171],src:"sample",feed:"permit-to-work API for the permit check"},
+ h2s:{hz:"H05",pri:"P1",n:"Gas or H₂S alarm response",cov:"partial",base:.5,cm:[11,2,1,96],src:"sample",feed:"fixed gas-detector alarms"},
+ iso:{hz:"",pri:null,n:"Energy isolation",cov:"needs",base:0,feed:"permit-to-work isolation records"},
+ bypass:{hz:"",pri:null,n:"Bypassing safety controls",cov:"needs",base:0,feed:"machine guard and override signals"}};
+const FLOORS={P1:.85,P2:.75,P3:.6};const floorOf=r=>r.pri?FLOORS[r.pri]:.8;
+const mcc=([tp,fp,fn,tn])=>{const d=Math.sqrt((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn));return d?(tp*tn-fp*fn)/d:0};
+/* ------------------------------------------------ standard components */
+const CAT={rig:["#b9b2a2","Rig"],mud:["#8fb3a7","Mud system"],power:["#a9a6c9","Power"],hz:["#e7a07a","Hazard / fuel"],lift:["#f0c35a","Lifting"],people:["#8fb0d8","People"],store:["#cfc6b0","Storage"]};
+const COMPS={
+ floor:{n:"Substructure + drill floor",w:14,h:14,cat:"rig",surf:8,haz:[3,8],zones:[{n:"Drill floor red zone",shape:"circle",r:6,rules:["red","fall","ppe","height"]}]},
+ catwalk:{n:"Catwalk + V-door",w:6,h:26,cat:"rig",zones:[{n:"Catwalk + V-door",shape:"rect",pad:1,rules:["lof","fall","ppe"]}]},
+ piperack:{n:"Pipe racks",w:34,h:14,cat:"rig",zones:[{n:"Pipe racks",shape:"rect",pad:2,rules:["fork","lof","ppe"]}]},
+ crane:{n:"Crane",w:6,h:6,cat:"lift",radius:22,zones:[{n:"Crane swing / load zone",shape:"circle",r:"radius",rules:["lift"]}]},
+ shaker:{n:"Shale shakers",w:8,h:6,cat:"mud",haz:[3,7],zones:[{n:"Shaker area",shape:"rect",pad:2,rules:["h2s","fall","smoke"]}]},
+ mudtank:{n:"Mud tanks",w:23,h:16,cat:"mud",haz:[0,3],zones:[{n:"Mud tanks",shape:"rect",pad:1,rules:["conf","h2s","fall"]}]},
+ mudpump:{n:"Mud pumps",w:19,h:10,cat:"mud",zones:[{n:"Mud pumps",shape:"rect",pad:1,rules:["bypass","iso","ppe"]}]},
+ gen:{n:"Generators / SCR",w:22,h:12,cat:"power",zones:[{n:"Power area",shape:"rect",pad:2,rules:["hot","iso"]}]},
+ fuel:{n:"Fuel tanks",w:10,h:12,cat:"hz",haz:[0,3],zones:[{n:"Fuel area",shape:"rect",pad:3,rules:["smoke","hot"]}]},
+ accum:{n:"Accumulator (BOP)",w:8,h:6,cat:"hz",zones:[{n:"Accumulator keep-clear",shape:"rect",pad:3,rules:["excl"]}]},
+ flare:{n:"Flare pit",w:12,h:10,cat:"hz",zones:[{n:"Flare exclusion",shape:"circle",r:16,rules:["excl"]}]},
+ chem:{n:"Chemical store",w:12,h:8,cat:"hz",zones:[{n:"Chemical store",shape:"rect",pad:1,rules:["ppe","conf"]}]},
+ water:{n:"Water tanks",w:12,h:16,cat:"store",zones:[]},
+ camp:{n:"Camp + offices",w:32,h:26,cat:"people",zones:[]},
+ muster:{n:"Muster point",w:6,h:6,cat:"people",zones:[{n:"Muster point",shape:"circle",r:7,rules:["muster"]}]},
+ gate:{n:"Gate + guardhouse",w:8,h:8,cat:"people",zones:[{n:"Gate",shape:"rect",pad:8,rules:["drive"]}]},
+ parking:{n:"Parking",w:26,h:16,cat:"store",zones:[{n:"Parking",shape:"rect",pad:0,rules:["drive"]}]},
+ edge:{n:"Deck edge (unguarded)",w:40,h:1,cat:"hz",zones:[{n:"Deck edge",shape:"rect",pad:2,rules:["edge"]}]},
+ deck:{n:"Main deck (offshore)",w:60,h:50,cat:"store",zones:[],under:true}};
+const MODELS={
+ b4k:{n:"Fixed bullet 4K",res:"3840x2160",fov:90,ex:false},b1080:{n:"Fixed bullet 1080p",res:"1920x1080",fov:80,ex:false},
+ ptz:{n:"PTZ 4K (zoom set)",res:"3840x2160",fov:40,ex:false},exb:{n:"Ex-rated 1080p (Zone 1)",res:"1920x1080",fov:80,ex:true},
+ ex4k:{n:"Ex-rated 4K (Zone 1)",res:"3840x2160",fov:85,ex:true},th:{n:"Thermal 640×512",res:"640x512",fov:40,ex:false}};
+/* ------------------------------------------------ presets */
+const LAND={type:"land",X0:-115,X1:100,Y0:-85,Y1:80,step:2,assume:{crew:30,lifts:12,pipe:10},
+ comps:[["floor",0,0],["catwalk",0,-20.5],["piperack",0,-43],["shaker",-11,5],["mudtank",-28.5,2],["mudpump",-30.5,18],["water",-56,2],["chem",-56,20],["gen",25,16],["fuel",45,16],["accum",28,-25],["flare",76,-57],["camp",-82,49],["parking",-87,-44],["gate",-108,-26],["muster",-74,62],["muster",-88,-70],["crane",22,-46]].map(([k,x,y],i)=>({id:"K"+(i+1),k,x,y,rot:0,radius:COMPS[k].radius})),
+ cams:[["C1","ex4k",2,24,16,-90,28,80,8],["C2","ex4k",12,0,14,180,26,90,8],["C3","b4k",24,-38,12,-165,30,90,0],["C4","b4k",6,-66,14,95,16,60,0],["C5","exb",-28,30,12,-90,38,80,0],["C6","b4k",-52,4,12,10,32,90,0],["C7","b4k",30,34,12,-100,34,90,0],["C8","ptz",46,-36,12,-25,18,40,0],["C9","b4k",-80,-20,8,-150,24,90,0],["C10","b1080",-64,46,8,125,24,80,0],["C11","b1080",-72,-58,8,-135,24,80,0],["C12","th",96,76,12,-135,8,40,0],["C13","th",-111,-81,12,45,8,40,0],["C14","b4k",38,-12,10,-140,32,85,0]].map(([id,m,x,y,h,yaw,pitch,fov,surf])=>({id,m,x,y,h,yaw,pitch,fov,surf}))};
+const OFF={type:"offshore",X0:-40,X1:40,Y0:-34,Y1:34,step:1,assume:{crew:45,lifts:18,pipe:12},
+ comps:[["deck",0,0],["floor",0,20],["catwalk",0,0],["piperack",-12,-4,90],["shaker",13,18],["mudtank",20,-1,90],["gen",17,-19],["fuel",-25,-18],["accum",-13,19],["chem",-1,-20],["muster",-25,22],["muster",25,22],["crane",-27,6],["crane",27,14],["edge",0,-25.5,0,60],["edge",-30.5,0,90,50],["edge",30.5,0,90,50]].map(([k,x,y,rot,len],i)=>({id:"K"+(i+1),k,x,y,rot:rot||0,...(k==="crane"?{radius:26}:{}),...(len?{len}:{})})),
+ cams:[["C1","ex4k",0,-2,16,90,32,80,8],["C2","ex4k",16,26,13,180,30,85,8],["C3","b4k",-28,-28,12,50,26,90,0],["C4","b4k",4,-30,12,95,22,80,0],["C5","exb",28,26,10,-120,30,80,0],["C6","b4k",-28,26,12,-60,26,90,0],["C7","b4k",30,-30,12,130,24,85,0],["C8","b1080",-31,0,10,0,24,90,0]].map(([id,m,x,y,h,yaw,pitch,fov,surf])=>({id,m,x,y,h,yaw,pitch,fov,surf}))};
+let T,sel=null,ruleOff={},thr=28,tiles=3;
+const clone=o=>JSON.parse(JSON.stringify(o));
+function load(p){T=clone(p);T.comps.forEach(c=>{if(c.radius==null)delete c.radius});ruleOff={};sel=null;layout();full()}
+/* ------------------------------------------------ geometry */
+const dims=c=>{const d=COMPS[c.k],w=c.len||d.w;return c.rot%180?[d.h,w]:[w,d.h]};
+const footprint=c=>{const[w,h]=dims(c);return[c.x-w/2,c.y-h/2,w,h]};
+const inRect=(r,x,y)=>x>=r[0]&&x<=r[0]+r[2]&&y>=r[1]&&y<=r[1]+r[3];
+function zonesOf(){const Z=[];T.comps.forEach(c=>COMPS[c.k].zones.forEach((zd,i)=>{const id=`${c.id}.${i}`;
+ const z={id,n:zd.n,comp:c,rules:zd.rules,surf:COMPS[c.k].surf||0};
+ if(zd.shape==="circle"){z.shape="circle";z.c=[c.x,c.y];z.r=zd.r==="radius"?(c.radius||22):zd.r}else{const f=footprint(c),p=zd.pad||0;z.shape="rect";z.r4=[f[0]-p,f[1]-p,f[2]+2*p,f[3]+2*p]}
+ Z.push(z)}));return Z}
+const inZone=(z,x,y)=>z.shape==="circle"?Math.hypot(x-z.c[0],y-z.c[1])<=z.r:inRect(z.r4,x,y);
+const floorRects=()=>T.comps.filter(c=>COMPS[c.k].surf).map(footprint);
+function hazRings(){return T.comps.filter(c=>COMPS[c.k].haz).map(c=>{const f=footprint(c),[z1,z2]=COMPS[c.k].haz;return{c,f,z1,z2}})}
+function distToRect(f,x,y){const dx=Math.max(f[0]-x,0,x-(f[0]+f[2])),dy=Math.max(f[1]-y,0,y-(f[1]+f[3]));return Math.hypot(dx,dy)}
+/* camera model: identical to the notebook's Camera (ray ∧ plane for the ground meet) */
+function basis(c){const M=MODELS[c.m],[W,H]=M.res.split("x").map(Number),f=(W/2)/Math.tan(c.fov/2*D),th=c.pitch*D,ps=c.yaw*D;
+ const fw=[Math.cos(ps)*Math.cos(th),Math.sin(ps)*Math.cos(th),-Math.sin(th)];let r=[fw[1],-fw[0],0];const n=Math.hypot(r[0],r[1]);r=[r[0]/n,r[1]/n,0];
+ const dn=[fw[1]*r[2]-fw[2]*r[1],fw[2]*r[0]-fw[0]*r[2],fw[0]*r[1]-fw[1]*r[0]];return{W,H,f,fw,r,dn,C:[c.x,c.y,c.h]}}
+function proj(B,X){const d=[X[0]-B.C[0],X[1]-B.C[1],X[2]-B.C[2]],zc=d[0]*B.fw[0]+d[1]*B.fw[1]+d[2]*B.fw[2];if(zc<.3)return null;
+ return[B.f*(d[0]*B.r[0]+d[1]*B.r[1]+d[2]*B.r[2])/zc+B.W/2,B.f*(d[0]*B.dn[0]+d[1]*B.dn[1]+d[2]*B.dn[2])/zc+B.H/2]}
+function groundHit(B,u,v,z){const a=(u-B.W/2)/B.f,b=(v-B.H/2)/B.f,d=[0,1,2].map(k=>B.r[k]*a+B.dn[k]*b+B.fw[k]);if(d[2]>-1e-6)return null;const t=(z-B.C[2])/d[2];return[B.C[0]+t*d[0],B.C[1]+t*d[1]]}
+function detPx(c,B,x,y,fl){const z0=fl.some(r=>inRect(r,x,y))?8:0;if(c.h<z0+1.2)return-1;const a=proj(B,[x,y,z0]),b=proj(B,[x,y,z0+1.7]);if(!a||!b)return-1;
+ if(a[0]<0||a[0]>B.W||a[1]<0||a[1]>B.H||b[0]<0||b[0]>B.W||b[1]<0||b[1]>B.H)return-1;
+ const tw=tiles>1?B.W/tiles*1.25:B.W,th=tiles>1?B.H/tiles*1.25:B.H;return Math.hypot(a[0]-b[0],a[1]-b[1])*416/Math.max(tw,th)}
+/* ------------------------------------------------ coverage + analytics */
+let COV,NX,NY;
+function compute(){NX=Math.round((T.X1-T.X0)/T.step);NY=Math.round((T.Y1-T.Y0)/T.step);const Bs=T.cams.map(basis),fl=floorRects(),n=NX*NY;
+ const cnt=new Uint8Array(n),multi=new Uint8Array(n),who=new Array(n);
+ for(let j=0;j<NY;j++)for(let i=0;i<NX;i++){const x=T.X0+(i+.5)*T.step,y=T.Y0+(j+.5)*T.step,k=j*NX+i,l=[];
+  T.cams.forEach((c,ci)=>{if(detPx(c,Bs[ci],x,y,fl)>=thr)l.push(ci)});cnt[k]=l.length;who[k]=l;
+  if(l.length>1)outer:for(let p=0;p<l.length;p++)for(let q=p+1;q<l.length;q++){const A=T.cams[l[p]],Bc=T.cams[l[q]];let dd=Math.abs(Math.atan2(y-A.y,x-A.x)-Math.atan2(y-Bc.y,x-Bc.x))%(2*Math.PI);if(dd>Math.PI)dd=2*Math.PI-dd;if(dd>=45*D&&dd<=135*D){multi[k]=1;break outer}}}
+ COV={cnt,multi,who,Bs}}
+function walkFn(){const decks=T.comps.filter(c=>COMPS[c.k].under).map(footprint);if(!decks.length)return()=>true;   /* offshore: only deck and drill floor are walkable */
+ const fl=floorRects();return(x,y)=>decks.some(r=>inRect(r,x,y))||fl.some(r=>inRect(r,x,y))}
+function zoneStats(z){let n=0,one=0,two=0;const cams=new Set(),walk=walkFn();
+ const[x0,y0,x1,y1]=z.shape==="circle"?[z.c[0]-z.r,z.c[1]-z.r,z.c[0]+z.r,z.c[1]+z.r]:[z.r4[0],z.r4[1],z.r4[0]+z.r4[2],z.r4[1]+z.r4[3]];
+ const i0=Math.max(0,Math.floor((x0-T.X0)/T.step)),i1=Math.min(NX-1,Math.ceil((x1-T.X0)/T.step)),j0=Math.max(0,Math.floor((y0-T.Y0)/T.step)),j1=Math.min(NY-1,Math.ceil((y1-T.Y0)/T.step));
+ for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){const x=T.X0+(i+.5)*T.step,y=T.Y0+(j+.5)*T.step;if(!inZone(z,x,y)||!walk(x,y))continue;const k=j*NX+i;n++;if(COV.cnt[k])one++;if(COV.multi[k])two++;COV.who[k].forEach(c=>cams.add(T.cams[c].id))}
+ return{n,one:n?one/n:0,two:n?two/n:0,cams:[...cams]}}
+function status(z,st,rid){const r=RULES[rid];if(ruleOff[z.id+"/"+rid])return["off","Off"];if(r.cov==="needs")return["feed","Needs feed"];
+ const c=r.twoView?st.two:st.one;if(r.feed&&c>=.5)return["part","Video + feed"];return c>=.9?["live","Live"]:c>=.5?["part","Partial"]:["none","No coverage"]}
+let ZS=[];
+function analyse(){ZS=zonesOf().map(z=>({z,st:zoneStats(z)}))}
+function forecast(){const a=T.assume,out={};const inst={};
+ ZS.forEach(({z})=>z.rules.forEach(r=>{if(!ruleOff[z.id+"/"+r])(inst[r]=inst[r]||[]).push(z.id)}));
+ ZS.forEach(({z,st})=>z.rules.forEach(rid=>{if(ruleOff[z.id+"/"+rid])return;const r=RULES[rid];if(!r.base)return;
+  const act=rid==="lift"?a.lifts/12:(rid==="red"||rid==="lof")?a.pipe/10:1;
+  const br=r.base*(a.crew/30)*act/inst[rid].length,cov=r.twoView?st.two:st.one,[tp,fp,fn]=r.cm,rec=tp/(tp+fn);
+  const o=out[rid]=out[rid]||{alerts:0,false:0,missCov:0,missDet:0,br:0};o.br+=br;o.alerts+=br*cov*rec;o.missCov+=br*(1-cov);o.missDet+=br*cov*(1-rec);o.false+=br*cov*rec*fp/tp}));
+ return out}
+/* ------------------------------------------------ drawing */
+const fig=$("fig"),cv=$("cv"),sv=$("sv");let VW=0,VH=0,sc=1,ox=0,oy=0;
+const sx=x=>ox+(x-T.X0)*sc,sy=y=>oy+(T.Y1-y)*sc;
+const probe=document.createElement("i");probe.style.display="none";document.body.appendChild(probe);
+const rgb=v=>{probe.style.color=v;return getComputedStyle(probe).color.match(/\d+(\.\d+)?/g).slice(0,3).map(Number)};
+function layout(){VW=fig.clientWidth;VH=fig.clientHeight;if(!T)return;sc=Math.min((VW-16)/(T.X1-T.X0),(VH-16)/(T.Y1-T.Y0));ox=(VW-(T.X1-T.X0)*sc)/2;oy=(VH-(T.Y1-T.Y0)*sc)/2;
+ const dpr=devicePixelRatio||1;cv.width=VW*dpr;cv.height=VH*dpr;cv.getContext("2d").setTransform(dpr,0,0,dpr,0,0)}
+const off=document.createElement("canvas");
+function paintRaster(){const g=cv.getContext("2d");g.clearRect(0,0,VW,VH);off.width=NX;off.height=NY;const og=off.getContext("2d"),img=og.createImageData(NX,NY);
+ const gr=rgb("var(--ground)"),te=rgb("var(--teal)"),ac=rgb("var(--acc)"),wa=rgb("var(--warn)"),mode=$("layer").value,rings=mode==="haz"?hazRings():[];
+ for(let j=0;j<NY;j++)for(let i=0;i<NX;i++){const k=j*NX+i,c=COV.cnt[k];let col=gr,al=0;
+  if(mode==="count"&&c){col=te;al=c===1?.3:c===2?.58:.85}else if(mode==="multi"){if(COV.multi[k]){col=te;al=.72}else if(c){col=ac;al=.3}}
+  else if(mode==="haz"){const x=T.X0+(i+.5)*T.step,y=T.Y0+(j+.5)*T.step;for(const h of rings){const d=distToRect(h.f,x,y);if(d<=h.z1){col=ac;al=.55;break}if(d<=h.z2){col=wa;al=.35}}}
+  const p=((NY-1-j)*NX+i)*4;for(let q=0;q<3;q++)img.data[p+q]=Math.round(gr[q]*(1-al)+col[q]*al);img.data[p+3]=255}
+ og.putImageData(img,0,0);g.imageSmoothingEnabled=false;g.drawImage(off,sx(T.X0),sy(T.Y1),(T.X1-T.X0)*sc,(T.Y1-T.Y0)*sc)}
+function camFoot(c,B){const pts=[],N=14,lim=Math.max(T.X1-T.X0,T.Y1-T.Y0)*.6;const e=(u,v)=>{let g=groundHit(B,u,v,c.surf);if(!g){const a=(u-B.W/2)/B.f,dx=B.fw[0]+B.r[0]*a,dy=B.fw[1]+B.r[1]*a,n=Math.hypot(dx,dy);g=[c.x+dx/n*lim,c.y+dy/n*lim]}
+ const d=Math.hypot(g[0]-c.x,g[1]-c.y);if(d>lim)g=[c.x+(g[0]-c.x)/d*lim,c.y+(g[1]-c.y)/d*lim];pts.push(g)};for(let t=0;t<=N;t++)e(B.W*t/N,B.H);for(let t=N;t>=0;t--)e(B.W*t/N,0);return pts}
+function paintSvg(){let s="";const zs=ZS;
+ T.comps.filter(c=>COMPS[c.k].under).forEach(c=>{const f=footprint(c);s+=`<rect x="${sx(f[0])}" y="${sy(f[1]+f[3])}" width="${f[2]*sc}" height="${f[3]*sc}" fill="var(--blk)" fill-opacity=".35" stroke="var(--ink)" stroke-width="2"/>`});
+ zs.forEach(({z})=>{const on=z.rules.some(r=>!ruleOff[z.id+"/"+r]);const stc=z.rules.some(r=>RULES[r].pri==="P1")?"var(--acc)":"var(--mute)";
+  if(z.shape==="circle")s+=`<circle cx="${sx(z.c[0])}" cy="${sy(z.c[1])}" r="${z.r*sc}" fill="none" stroke="${stc}" stroke-width="1.6" stroke-dasharray="5 4" opacity="${on?1:.35}"/>`;
+  else s+=`<rect x="${sx(z.r4[0])}" y="${sy(z.r4[1]+z.r4[3])}" width="${z.r4[2]*sc}" height="${z.r4[3]*sc}" fill="none" stroke="${stc}" stroke-width="1.4" stroke-dasharray="5 4" opacity="${on?1:.35}"/>`});
+ T.comps.forEach(c=>{if(COMPS[c.k].under)return;const f=footprint(c),on=sel&&sel.t==="c"&&sel.id===c.id;
+  s+=`<rect data-c="${c.id}" x="${sx(f[0])}" y="${sy(f[1]+f[3])}" width="${Math.max(3,f[2]*sc)}" height="${Math.max(3,f[3]*sc)}" fill="${CAT[COMPS[c.k].cat][0]}" stroke="${on?"var(--acc)":"var(--ink)"}" stroke-width="${on?3:1.2}" style="cursor:grab"/>`;
+  if(f[2]*sc>54&&f[3]*sc>14)s+=`<text x="${sx(f[0])+3}" y="${sy(f[1]+f[3])+13}" font-size="11.5" font-weight="600" fill="#1a1a1a" font-family="Barlow,sans-serif" pointer-events="none">${esc(COMPS[c.k].n)}</text>`});
+ if(sel&&sel.t==="k"){const c=T.cams.find(x=>x.id===sel.id);if(c){const fp=camFoot(c,COV.Bs[T.cams.indexOf(c)]);s+=`<polygon points="${fp.map(p=>sx(p[0])+","+sy(p[1])).join(" ")}" fill="var(--teal)" fill-opacity=".1" stroke="var(--teal)" stroke-width="2.5" pointer-events="none"/>`}}
+ const rings=hazRings();T.cams.forEach(c=>{const L=Math.max(13,3.2*sc*T.step),a=c.yaw*D,h=c.fov/2*D,px=sx(c.x),py=sy(c.y),on=sel&&sel.t==="k"&&sel.id===c.id;
+  const bad=!MODELS[c.m].ex&&rings.some(r=>distToRect(r.f,c.x,c.y)<=r.z2);
+  s+=`<path d="M${px} ${py} L${px+L*Math.cos(a-h)} ${py-L*Math.sin(a-h)} L${px+L*Math.cos(a+h)} ${py-L*Math.sin(a+h)} Z" fill="${on?"var(--acc)":"var(--ink)"}" opacity=".85" pointer-events="none"/>
+  <circle data-k="${c.id}" cx="${px}" cy="${py}" r="${on?8:6}" fill="${MODELS[c.m].ex?"var(--ok)":MODELS[c.m].res==="640x512"?"#7a4cc2":"var(--ink)"}" stroke="${bad?"var(--bad)":"var(--bg)"}" stroke-width="${bad?3.5:2}" style="cursor:grab"/>
+  <text x="${px>VW-48?px-34:px+9}" y="${py<24?py+20:py-8}" font-size="12.5" font-weight="600" font-family="JetBrains Mono,monospace" fill="var(--ink)" paint-order="stroke" stroke="var(--bg)" stroke-width="3" pointer-events="none">${c.id}</text>`});
+ const bx=sx(T.X0)+10,by=sy(T.Y0)-10,bl=T.type==="land"?20:10;s+=`<path d="M${bx} ${by} h${bl*sc}" stroke="var(--ink)" stroke-width="3"/><text x="${bx}" y="${by-6}" font-size="12" fill="var(--ink)" font-family="JetBrains Mono,monospace">${bl} m</text>`;
+ sv.setAttribute("viewBox",`0 0 ${VW} ${VH}`);sv.innerHTML=s}
+function key(){const m=$("layer").value;$("key").innerHTML=(m==="count"?`<span><i style="background:var(--teal);opacity:.3"></i>1 camera</span><span><i style="background:var(--teal);opacity:.6"></i>2</span><span><i style="background:var(--teal)"></i>3+</span>`:m==="multi"?`<span><i style="background:var(--teal);opacity:.72"></i>two views ≥45°</span><span><i style="background:var(--acc);opacity:.3"></i>one view</span>`:m==="haz"?`<span><i style="background:var(--acc);opacity:.55"></i>Zone 1 (illustrative)</span><span><i style="background:var(--warn);opacity:.35"></i>Zone 2</span>`:"")+
+ `<span><i style="border:1.5px dashed var(--acc);background:none"></i>zone with a P1 rule</span><span><i style="background:var(--ok);border-radius:50%"></i>Ex camera</span>`}
+/* ------------------------------------------------ panels */
+function palette(){$("pal").innerHTML=`<h3>Components</h3>`+Object.entries(COMPS).map(([k,c])=>`<button class="pi" data-add="${k}"><i style="background:${CAT[c.cat][0]}"></i>${c.n}</button>`).join("")+
+ `<h3>Cameras</h3>`+Object.entries(MODELS).map(([k,m])=>`<button class="pi" data-cam="${k}"><i style="background:${m.ex?"var(--ok)":m.res==="640x512"?"#7a4cc2":"var(--ink)"};border-radius:50%"></i>${m.n}</button>`).join("")}
+const rng=(id,l,v,min,max,st,u)=>`<label for="${id}">${l}</label><div class="rng"><input type="range" id="${id}" min="${min}" max="${max}" step="${st}" value="${v}"><output>${v}${u}</output></div>`;
+function inspector(){const el=$("insp");
+ if(!sel){el.innerHTML=`<h3>Inspector</h3><p class="empty">Click a component in the list to add it, then drag it on the plan. Click a camera or component on the plan to edit it.</p>
+  ${rng("g-thr","Min. person height for the detector (px)",thr,12,64,1,"")}<label for="g-tiles">Detector tiling</label><select id="g-tiles"><option value="1"${tiles===1?" selected":""}>Off</option><option value="2"${tiles===2?" selected":""}>2×2 + full frame</option><option value="3"${tiles===3?" selected":""}>3×3 + full frame</option></select>
+  <p class="note">3×3 tiling: 10 detector passes per frame ≈ 300 ms per camera on one CPU core (30 ms int8 pass, measured on Colab).</p>`;return}
+ if(sel.t==="c"){const c=T.comps.find(x=>x.id===sel.id),d=COMPS[c.k],zs=ZS.filter(o=>o.z.comp===c);
+  el.innerHTML=`<h3>${esc(d.n)}</h3><p class="note" style="margin-top:0">${c.id} · ${dims(c).join(" × ")} m${d.surf?" · walking surface 8 m up":""}${d.haz?` · hazardous area ${d.haz[0]} / ${d.haz[1]} m`:""}</p>
+  ${c.k==="crane"?rng("c-rad","Swing radius (m)",c.radius||22,8,50,1," m"):""}${c.k==="edge"?rng("c-len","Edge length (m)",c.len||COMPS.edge.w,5,120,1," m"):""}
+  <div class="row"><button class="btn ghost sm" id="c-rot">Rotate 90°</button><button class="btn ghost sm" id="c-del">Remove</button></div>
+  <h3 style="margin-top:14px;font-size:17px">Zones and rules</h3>${zs.length?zs.map(({z,st})=>`<p style="margin:6px 0"><b>${esc(z.n)}</b> · ${f0(st.one*100)}% detectable</p><div>${z.rules.map(r=>{const[k,l]=status(z,st,r);return`<span class="badge s-${k}">${RULES[r].hz||""} ${RULES[r].n}: ${l}</span>`}).join("")}</div>`).join(""):`<p class="empty">No hazard zones for this component.</p>`}`;return}
+ const c=T.cams.find(x=>x.id===sel.id),i=T.cams.indexOf(c),B=COV.Bs[i],ctr=groundHit(B,B.W/2,B.H/2,c.surf);
+ el.innerHTML=`<h3>Camera ${c.id}</h3><label for="k-m">Model</label><select id="k-m">${Object.entries(MODELS).map(([k,m])=>`<option value="${k}"${k===c.m?" selected":""}>${m.n}</option>`).join("")}</select>
+  ${rng("k-h","Mount height (m)",c.h,3,40,.5," m")}${rng("k-yaw","Heading",c.yaw,-180,180,1,"°")}${rng("k-pitch","Pitch down",c.pitch,5,85,1,"°")}${rng("k-fov","Horizontal FOV",c.fov,15,110,1,"°")}
+  <label for="k-surf">Walking surface it watches</label><select id="k-surf"><option value="0"${c.surf?"":" selected"}>Ground or deck (0 m)</option><option value="8"${c.surf?" selected":""}>Drill floor (8 m)</option></select>
+  <p class="note">Aims at ${ctr?`(${f0(ctr[0])}, ${f0(ctr[1])}) m, ${f0(Math.hypot(ctr[0]-c.x,ctr[1]-c.y))} m out`:"the horizon"}.${c.pitch>60?" Steep: workers look like blobs from here.":""} ${(()=>{const n=calibPts(c,i).length;return n>=4?`${n} component corners visible for calibration.`:`Only ${n} component corners visible: add painted deck marks to calibrate.`})()}</p>
+  <div class="row"><button class="btn ghost sm" id="k-del">Remove camera</button></div>`}
+function kpis(fc){const live=[],gaps=[];let p1=0,p1live=0;
+ ZS.forEach(({z,st})=>z.rules.forEach(r=>{const[k]=status(z,st,r);if(k==="off")return;if(RULES[r].pri==="P1"&&RULES[r].cov!=="needs"&&!RULES[r].feed){p1++;if(k==="live")p1live++}if(k==="live")live.push(r);if(k==="none")gaps.push(z.n+": "+RULES[r].n)}));
+ const tot=Object.values(fc).reduce((a,o)=>a+o.alerts,0),fa=Object.values(fc).reduce((a,o)=>a+o.false,0),mc=Object.values(fc).reduce((a,o)=>a+o.missCov,0);
+ const warn=checks().filter(x=>!x[0]).length;
+ $("kpis").innerHTML=[[T.comps.length,"Components"],[T.cams.length,"Cameras"],[`${p1live}/${p1}`,"P1 video rules live"],[f0(tot),"Expected alerts / week"],[f0(fa),"False alarms / week"],[f0(mc),"Breaches missed (no coverage)"],[warn,"Design warnings"]].map(([v,l])=>`<div class="kpi"><b>${v}</b><span>${l}</span></div>`).join("");
+ const top=Object.entries(fc).sort((a,b)=>b[1].alerts-a[1].alerts)[0];
+ $("finding").textContent=`${T.type==="land"?"Land rig":T.type==="offshore"?"Offshore deck":"Site"} with ${T.cams.length} cameras: about ${f0(tot)} alerts a week expected${top?`, mostly ${RULES[top[0]].n.toLowerCase()}`:""}. ${p1live} of ${p1} P1 video rule zones are fully covered${gaps.length?`; ${gaps.length} zone-rule pairs have no coverage`:""}.`}
+function cfgTable(){$("cfg").innerHTML=ZS.map(({z,st})=>`<tr><td data-l="Zone"><b>${esc(z.n)}</b> <span class="mono" style="color:var(--mute)">${z.id}</span></td><td class="n" data-l="Detectable"><div class="hb"><i style="width:${st.one*100}%"></i></div>${f0(st.one*100)}%</td><td class="n" data-l="Fall-ready">${f0(st.two*100)}%</td><td class="mono" data-l="Cameras">${st.cams.join(" ")||"—"}</td>
+ <td data-l="Rules">${z.rules.map(r=>{const[k,l]=status(z,st,r),R=RULES[r];return`<button class="rtog badge s-${k}" data-z="${z.id}" data-r="${r}" title="${esc(R.feed?"Needs "+R.feed:"Switch on or off")}">${R.hz?R.hz+" ":""}${R.n}${R.pri?" · "+R.pri:""}: ${l}</button>`}).join("")}</td></tr>`).join("")||`<tr><td colspan="5">Add components to get zones.</td></tr>`}
+function fcView(fc){const a=T.assume;
+ $("ass").innerHTML=[["crew","Crew on site per shift",a.crew,5,120,1],["lifts","Crane lifts per day",a.lifts,0,60,1],["pipe","Pipe-handling hours per day",a.pipe,0,24,1]].map(([k,l,v,mn,mx,st])=>`<div>${rng("a-"+k,l,v,mn,mx,st,"")}</div>`).join("");
+ const rows=Object.entries(fc).sort((x,y)=>y[1].alerts-x[1].alerts),mx=Math.max(1,...rows.map(([,o])=>o.br));
+ const tot=rows.reduce((s,[,o])=>s+o.alerts,0);$("fcTitle").textContent=`About ${f0(tot)} alerts a week, ${f0(rows.reduce((s,[,o])=>s+o.false,0))} of them false alarms on top`;
+ $("fcTable").innerHTML=`<span class="hd">Alert type</span><span class="hd bb">Breaches: alerted · missed by detector · missed, no coverage</span><span class="hd" style="text-align:right">Alerts</span><span class="hd" style="text-align:right">False</span><span class="hd" style="text-align:right">Missed</span>`+
+  rows.map(([rid,o])=>{const R=RULES[rid],m=mcc(R.cm);return`<span>${R.hz?R.hz+" ":""}${R.n}<br><small style="color:var(--mute)">${R.pri||"no tier"} · MCC ${m.toFixed(2)} ${m>=floorOf(R)?"meets":"below"} ${floorOf(R).toFixed(2)} · ${R.src==="notebook"?"notebook":"sample"}</small></span>
+  <div class="stk bb" style="width:${o.br/mx*100}%"><i style="width:${o.alerts/o.br*100}%;background:var(--teal)"></i><i style="width:${o.missDet/o.br*100}%;background:var(--warn)"></i><i style="width:${o.missCov/o.br*100}%;background:var(--bad)"></i></div>
+  <span class="mono" style="text-align:right">${f1(o.alerts)}</span><span class="mono" style="text-align:right">${f1(o.false)}</span><span class="mono" style="text-align:right">${f1(o.missDet+o.missCov)}</span>`}).join("");
+ const feeds=[...new Set(ZS.flatMap(({z})=>z.rules.filter(r=>RULES[r].feed&&!ruleOff[z.id+"/"+r])))];
+ $("fcFeed").textContent=feeds.length?`Rules that also need a non-video feed: ${feeds.map(r=>`${RULES[r].n} (${RULES[r].feed})`).join("; ")}. Their video part is counted above; the rest isn't.`:""}
+function checks(){const out=[],rings=hazRings();
+ T.cams.forEach(c=>{if(MODELS[c.m].ex)return;const r=rings.find(r=>distToRect(r.f,c.x,c.y)<=r.z2);if(r)out.push([false,`${c.id} (${MODELS[c.m].n}) sits inside the hazardous area around ${COMPS[r.c.k].n.toLowerCase()}: use an Ex-rated camera or move it.`])});
+ ZS.forEach(({z,st})=>z.rules.forEach(r=>{if(ruleOff[z.id+"/"+r])return;const R=RULES[r];if(R.pri==="P1"&&R.cov!=="needs"&&!R.feed&&st.one<.9)out.push([false,`P1 rule "${R.n}" in ${z.n} is only ${f0(st.one*100)}% covered.`])}));
+ ZS.forEach(({z,st})=>{if(z.rules.includes("fall")&&!ruleOff[z.id+"/fall"]&&st.two<.6)out.push([false,`Falls in ${z.n}: only ${f0(st.two*100)}% has two views ≥45° apart, so falls along a camera's line of sight can be missed.`])});
+ T.cams.forEach((c,ci)=>{if(calibPts(c,ci).length<4)out.push([false,`${c.id} sees fewer than 4 component corners on its surface: add painted deck marks so it can be calibrated from measured points.`])});
+ T.cams.forEach(c=>{if(c.pitch>60)out.push([false,`${c.id} looks down at ${c.pitch}°: standing workers are foreshortened; keep detection cameras under about 60°.`])});
+ const below=Object.entries(RULES).filter(([id,R])=>R.cm&&ZS.some(({z})=>z.rules.includes(id))&&mcc(R.cm)<floorOf(R));
+ below.forEach(([id,R])=>out.push([false,`${R.n}: MCC ${mcc(R.cm).toFixed(2)} is below its ${floorOf(R).toFixed(2)} floor (${R.src}); tune before go-live.`]));
+ if(!out.length)out.push([true,"No design warnings."]);
+ const ok=[];if(!T.cams.some(c=>!MODELS[c.m].ex&&rings.some(r=>distToRect(r.f,c.x,c.y)<=r.z2)))ok.push([true,"Every camera inside a hazardous area is Ex-rated."]);
+ return[...out,...ok]}
+function calibPts(c,ci){const B=COV.Bs[ci],cand=[];
+ T.comps.forEach(k=>{const surf=COMPS[k.k].surf||0;if(surf!==c.surf)return;const f=footprint(k);
+  [[f[0],f[1],"SW"],[f[0]+f[2],f[1],"SE"],[f[0]+f[2],f[1]+f[3],"NE"],[f[0],f[1]+f[3],"NW"]].forEach(([x,y,cn])=>{const p=proj(B,[x,y,surf]);
+   if(p&&p[0]>B.W*.04&&p[0]<B.W*.96&&p[1]>B.H*.04&&p[1]<B.H*.96&&Math.hypot(x-c.x,y-c.y)<60)cand.push({x,y,u:p[0],v:p[1],n:`${COMPS[k.k].n} ${cn} corner`})})});
+ const out=[];if(!cand.length)return out;let cx=B.W/2,cy=B.H/2;
+ while(out.length<6&&cand.length){let bi=0,bd=-1;cand.forEach((p,i)=>{const d=out.length?Math.min(...out.map(q=>Math.hypot(p.u-q.u,p.v-q.v))):-Math.hypot(p.u-cx,p.v-cy);if(d>bd){bd=d;bi=i}});out.push(cand.splice(bi,1)[0])}
+ return out}
+function py(){const L=["# generated by VG360 Rig Twin · paste after the notebook cell"];
+ T.cams.forEach((c,ci)=>{const ps=c.yaw*D,fw=[Math.cos(ps),Math.sin(ps)],rt=[Math.sin(ps),-Math.cos(ps)],loc=p=>{const d=[p[0]-c.x,p[1]-c.y];return`(${f1(d[0]*rt[0]+d[1]*rt[1])}, ${f1(d[0]*fw[0]+d[1]*fw[1])})`};
+  const zl=ZS.filter(({st})=>st.cams.includes(c.id)).map(({z})=>{const poly=z.shape==="circle"?Array.from({length:16},(_,t)=>[z.c[0]+z.r*Math.cos(t/16*2*Math.PI),z.c[1]+z.r*Math.sin(t/16*2*Math.PI)]):[[z.r4[0],z.r4[1]],[z.r4[0]+z.r4[2],z.r4[1]],[z.r4[0]+z.r4[2],z.r4[1]+z.r4[3]],[z.r4[0],z.r4[1]+z.r4[3]]];
+   return`        Zone("${z.id.replace(".","_")}", "polygon", {"poly": [${poly.map(loc).join(", ")}]}),   # ${z.n}`});
+  L.push(`SCENES["${c.id}"] = dict(h=${f1(c.h-c.surf)}, pitch=${c.pitch}.0, hfov=${c.fov}.0, zones=lambda: [   # ${MODELS[c.m].n}`,...zl,"])");
+  const cp=calibPts(c,ci);
+  if(cp.length>=4)L.push(`SCENES["${c.id}"]["calib"] = dict(   # measure these corners on a ${MODELS[c.m].res} frame and replace image_pts`,
+   `    world_pts=[${cp.map(p=>{const d=[p.x-c.x,p.y-c.y];return`(${(d[0]*rt[0]+d[1]*rt[1]).toFixed(2)}, ${(d[0]*fw[0]+d[1]*fw[1]).toFixed(2)})`}).join(", ")}],`,
+   `    image_pts=[${cp.map(p=>`(${f0(p.u)}, ${f0(p.v)})`).join(", ")}],   # PREDICTED from the plan, not measured`,
+   `    names=${JSON.stringify(cp.map(p=>p.n))})`);
+  else L.push(`# ${c.id}: only ${cp.length} component corners visible on its surface; paint or survey ≥4 deck marks to calibrate it`)});
+ const eng=["lift","red","edge","fall","ppe"],onIds=eng.filter(r=>ZS.some(({z})=>z.rules.includes(r)&&!ruleOff[z.id+"/"+r]));
+ L.push(`RULES[:] = [r for r in RULES if r.id in ${JSON.stringify(onIds)}]   # rule switches from the twin`);
+ const lz=ZS.find(({z})=>z.rules.includes("lift")),rz=ZS.find(({z})=>z.rules.includes("red"));
+ if(lz)L.push(`for r in RULES:\n    if r.id == "lift": r.params["zone"] = "${lz.z.id.replace(".","_")}"\n    if r.id == "red": r.params["zone"] = "${rz?rz.z.id.replace(".","_"):""}"`);
+ L.push(`CFG.scene = "${T.cams[0]?T.cams[0].id:"C1"}"   # the camera whose footage is in CFG.source`);$("py").textContent=L.join("\n")}
+function twinJson(fc){return JSON.stringify({vg360_twin:1,type:T.type,bounds:[T.X0,T.X1,T.Y0,T.Y1],step:T.step,assume:T.assume,detector:{min_px:thr,tiles},
+ components:T.comps.map(c=>({id:c.id,kind:c.k,name:COMPS[c.k].n,x:c.x,y:c.y,rot:c.rot,...(c.radius?{radius:c.radius}:{}),...(c.len?{len:c.len}:{})})),
+ cameras:T.cams.map((c,ci)=>({...c,model:MODELS[c.m].n,res:MODELS[c.m].res,calibration_points:calibPts(c,ci).map(p=>({name:p.n,world:[p.x,p.y],predicted_px:[f0(p.u),f0(p.v)]}))})),
+ zones:ZS.map(({z,st})=>({id:z.id,name:z.n,component:z.comp.id,shape:z.shape,...(z.shape==="circle"?{center:z.c,r:z.r}:{rect:z.r4}),surface_m:z.surf,detectable:+st.one.toFixed(3),fall_ready:+st.two.toFixed(3),cameras:st.cams,
+  rules:z.rules.map(r=>({id:r,hz:RULES[r].hz,pri:RULES[r].pri,on:!ruleOff[z.id+"/"+r],status:status(z,st,r)[1]}))})),
+ forecast_per_week:Object.fromEntries(Object.entries(fc).map(([k,o])=>[k,{alerts:+o.alerts.toFixed(2),false_alarms:+o.false.toFixed(2),missed_no_coverage:+o.missCov.toFixed(2),missed_detector:+o.missDet.toFixed(2)}]))},null,1)}
+/* ------------------------------------------------ refresh */
+function save(){try{localStorage.setItem("vg360-twin2",JSON.stringify({T,ruleOff,thr,tiles}))}catch(e){}}
+function panels(){const fc=forecast();inspector();kpis(fc);cfgTable();fcView(fc);$("checks").innerHTML=checks().map(([ok,t])=>`<li><span class="mk" style="color:${ok?"var(--ok)":"var(--bad)"}">${ok?"✓":"!"}</span>${esc(t)}</li>`).join("");py();$("twinTxt").value=twinJson(fc);save()}
+function full(){compute();analyse();paintRaster();paintSvg();key();panels()}
+function light(){analyse();paintSvg();panels()}
+/* ------------------------------------------------ events */
+new ResizeObserver(()=>{layout();if(COV){paintRaster();paintSvg()}}).observe(fig);
+$("pal").addEventListener("click",e=>{const a=e.target.closest("[data-add]"),k=e.target.closest("[data-cam]");const cx=(T.X0+T.X1)/2,cy=(T.Y0+T.Y1)/2;
+ if(a){const id="K"+(Math.max(0,...T.comps.map(c=>+c.id.slice(1)))+1);T.comps.push({id,k:a.dataset.add,x:Math.round(cx),y:Math.round(cy),rot:0,...(COMPS[a.dataset.add].radius?{radius:COMPS[a.dataset.add].radius}:{})});sel={t:"c",id};full()}
+ if(k){const m=MODELS[k.dataset.cam],id="C"+(Math.max(0,...T.cams.map(c=>+c.id.slice(1)))+1);T.cams.push({id,m:k.dataset.cam,x:Math.round(cx),y:Math.round(cy+(T.Y1-T.Y0)*.3),h:12,yaw:-90,pitch:30,fov:m.fov,surf:0});sel={t:"k",id};full()}});
+$("insp").addEventListener("input",e=>{const id=e.target.id,v=+e.target.value,o=e.target.nextElementSibling;
+ if(id==="g-thr"){thr=v;o.textContent=v;return full()}
+ if(sel&&sel.t==="c"&&id==="c-rad"){T.comps.find(x=>x.id===sel.id).radius=v;o.textContent=v+" m";return light()}
+ if(sel&&sel.t==="c"&&id==="c-len"){T.comps.find(x=>x.id===sel.id).len=v;o.textContent=v+" m";return light()}
+ if(sel&&sel.t==="k"){const c=T.cams.find(x=>x.id===sel.id),map={"k-h":"h","k-yaw":"yaw","k-pitch":"pitch","k-fov":"fov"};if(map[id]){c[map[id]]=v;if(o)o.textContent=v+(id==="k-h"?" m":"°");compute();analyse();paintRaster();paintSvg();kpis(forecast());cfgTable();fcView(forecast());py();save()}}});
+$("insp").addEventListener("change",e=>{const id=e.target.id;if(id==="g-tiles"){tiles=+e.target.value;return full()}
+ if(sel&&sel.t==="k"){const c=T.cams.find(x=>x.id===sel.id);if(id==="k-m"){c.m=e.target.value;c.fov=MODELS[c.m].fov;full()}if(id==="k-surf"){c.surf=+e.target.value;full()}}});
+$("insp").addEventListener("click",e=>{const id=e.target.id;
+ if(id==="c-rot"){const c=T.comps.find(x=>x.id===sel.id);c.rot=(c.rot+90)%360;full()}
+ if(id==="c-del"){T.comps=T.comps.filter(x=>x.id!==sel.id);sel=null;full()}
+ if(id==="k-del"){T.cams=T.cams.filter(x=>x.id!==sel.id);sel=null;full()}});
+$("cfg").addEventListener("click",e=>{const b=e.target.closest("[data-z]");if(!b)return;const k=b.dataset.z+"/"+b.dataset.r;if(ruleOff[k])delete ruleOff[k];else ruleOff[k]=1;paintSvg();panels()});
+$("p-fc").addEventListener("input",e=>{const m=e.target.id.match(/^a-(\w+)/);if(!m)return;T.assume[m[1]]=+e.target.value;e.target.nextElementSibling.textContent=e.target.value;const fc=forecast();kpis(fc);fcView(fc);$("twinTxt").value=twinJson(fc);save()});
+$("layer").addEventListener("change",()=>{paintRaster();key()});
+document.querySelector(".tabs").addEventListener("click",e=>{const b=e.target.closest("[data-t]");if(!b)return;document.querySelectorAll(".tabs button").forEach(x=>x.setAttribute("aria-selected",x===b));["cfg","fc","chk","exp"].forEach(t=>$("p-"+t).hidden=t!==b.dataset.t)});
+document.querySelector(".presets").addEventListener("click",e=>{const b=e.target.closest("[data-preset]");if(!b)return;const p=b.dataset.preset;load(p==="land"?LAND:p==="offshore"?OFF:{type:"blank",X0:-60,X1:60,Y0:-45,Y1:45,step:1,assume:{crew:20,lifts:6,pipe:4},comps:[],cams:[]})});
+{let drag=null,moved=false;const at=e=>{const r=sv.getBoundingClientRect();return[T.X0+(e.clientX-r.left-ox)/sc,T.Y1-(e.clientY-r.top-oy)/sc]};
+ sv.addEventListener("pointerdown",e=>{const k=e.target.closest("[data-k]"),c=e.target.closest("[data-c]");
+  if(k){sel={t:"k",id:k.dataset.k};drag=T.cams.find(x=>x.id===sel.id)}else if(c){sel={t:"c",id:c.dataset.c};drag=T.comps.find(x=>x.id===sel.id)}else{sel=null;drag=null;paintSvg();inspector();return}
+  const p=at(e);drag._o=[drag.x-p[0],drag.y-p[1]];moved=false;sv.setPointerCapture(e.pointerId);paintSvg();inspector()});
+ sv.addEventListener("pointermove",e=>{if(!drag)return;const p=at(e);drag.x=Math.round(Math.max(T.X0,Math.min(T.X1,p[0]+drag._o[0])));drag.y=Math.round(Math.max(T.Y0,Math.min(T.Y1,p[1]+drag._o[1])));moved=true;analyse();paintSvg()});
+ sv.addEventListener("pointerup",()=>{if(drag){delete drag._o;drag=null;if(moved)full()}})}
+$("cpTwin").onclick=async()=>{try{await navigator.clipboard.writeText($("twinTxt").value);$("twinMsg").textContent="Copied."}catch(e){$("twinTxt").select();$("twinMsg").textContent="Selected: press Ctrl+C."}};
+$("cpPy").onclick=async()=>{try{await navigator.clipboard.writeText($("py").textContent);$("pyMsg").textContent="Copied."}catch(e){$("pyMsg").textContent="Select the text below to copy."}};
+$("ldTwin").onclick=()=>{try{const j=JSON.parse($("twinTxt").value);if(j.vg360_twin!==1)throw new Error("not a VG360 twin file");
+ const t={type:j.type,X0:j.bounds[0],X1:j.bounds[1],Y0:j.bounds[2],Y1:j.bounds[3],step:j.step,assume:j.assume,
+  comps:j.components.filter(c=>COMPS[c.kind]).map(c=>({id:c.id,k:c.kind,x:+c.x,y:+c.y,rot:+c.rot||0,...(c.radius?{radius:+c.radius}:{}),...(c.len?{len:+c.len}:{})})),
+  cams:j.cameras.filter(c=>MODELS[c.m]).map(c=>({id:c.id,m:c.m,x:+c.x,y:+c.y,h:+c.h,yaw:+c.yaw,pitch:+c.pitch,fov:+c.fov,surf:+c.surf||0}))};
+ load(t);(j.zones||[]).forEach(z=>(z.rules||[]).forEach(r=>{if(r.on===false)ruleOff[z.id+"/"+r.id]=1}));if(j.detector){thr=+j.detector.min_px||28;tiles=+j.detector.tiles||3}full();$("twinMsg").textContent="Twin loaded."}catch(err){$("twinMsg").textContent="Couldn't load: "+err.message}};
+palette();
+let saved=null;try{saved=JSON.parse(localStorage.getItem("vg360-twin2")||"null")}catch(e){}
+if(saved&&saved.T){T=saved.T;ruleOff=saved.ruleOff||{};thr=saved.thr||28;tiles=saved.tiles||3;layout();full()}else load(LAND);
+}
+
+/* ------------------------------------------------ VG360 console: live site */
+// When served by the VG360 console, the site's applied twin is loaded from the server and
+// "Apply to site" sends the current twin to the camera workers (cameras, zones, calibration points).
+(function(){
+  const $=id=>document.getElementById(id);
+  const live=location.protocol.startsWith("http")&&!location.hostname.endsWith("claude.ai");
+  if(!live){const b=$("applySite");if(b)b.style.display="none";return}
+  $("siteBar").style.display="block";
+  fetch("/api/twin").then(r=>r.ok?r.json():null).then(j=>{if(j&&j.twin){ $("twinTxt").value=JSON.stringify(j.twin,null,1); $("ldTwin").click(); $("twinMsg").textContent="Loaded the twin applied to this site ("+(j.applied_at||"")+")."}}).catch(()=>{});
+  $("applySite").onclick=async()=>{try{const r=await fetch("/api/twin",{method:"POST",headers:{"content-type":"application/json"},body:$("twinTxt").value});
+    const j=await r.json();const m=(r.ok&&j.ok!==false)?`Applied: ${j.cameras} cameras, ${j.zones} zones, ${j.rules_on} rule switches on · ${j.evidence_events} calibration events in the evidence log.`:"Not applied: "+(j.error||r.status);
+    $("twinMsg").textContent=m;$("siteMsg").textContent=m;if(window.parent!==window)window.parent.postMessage({vg360:"twin-applied"},"*")}
+    catch(e){$("twinMsg").textContent=$("siteMsg").textContent="Not applied: "+e.message}};
+  $("applySiteTop").onclick=()=>$("applySite").onclick();
+})();
+</script>
+</body>
+</html>

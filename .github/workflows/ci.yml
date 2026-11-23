@@ -2,7 +2,7 @@ name: ci
 on: [push, pull_request]
 jobs:
   core:
-    name: geometry · vision · guard · inference · scene · pipeline (pure Rust)
+    name: geometry · vision · guard · inference · scene · pipeline · rules (pure Rust)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -10,7 +10,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update -q && sudo apt-get install -yq ffmpeg
       - run: ./scripts/fetch_models.sh
-      - run: cargo test --release -p vg360-geom -p vg360-vision -p vg360-guard -p vg360-infer -p vg360-scene -p vg360-pipeline
+      - run: cargo test --release -p vg360-geom -p vg360-vision -p vg360-guard -p vg360-infer -p vg360-scene -p vg360-pipeline -p vg360-rules -p vg360-evidence
   onnxruntime:
     name: inference on ONNX Runtime (load-dynamic)
     runs-on: ubuntu-latest
@@ -33,3 +33,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --release -p vg360-server
+  provenance:
+    name: evidence end to end (vesdb + witness + vesdb-verify)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with: { repository: dhaneshkk/test1_vesdb, path: vesdb }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: ". -> target\nvesdb -> target" }
+      - run: cargo build --release --manifest-path vesdb/Cargo.toml -p vesdb-server -p vesdb-witness -p vesdb-verify
+      - run: VESDB_BIN_DIR=$PWD/vesdb/target/release cargo test --release -p vg360-evidence -- --nocapture

@@ -8,4 +8,5 @@ pub mod camera;
 pub mod ledger;
 pub mod metrics;
 pub mod rules;
+pub mod twin;
 pub mod zones;

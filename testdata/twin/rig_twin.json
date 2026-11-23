@@ -1,0 +1,1717 @@
+{
+ "vg360_twin": 1,
+ "type": "land",
+ "bounds": [
+  -115,
+  100,
+  -85,
+  80
+ ],
+ "step": 2,
+ "assume": {
+  "crew": 30,
+  "lifts": 12,
+  "pipe": 10
+ },
+ "detector": {
+  "min_px": 28,
+  "tiles": 3
+ },
+ "components": [
+  {
+   "id": "K1",
+   "kind": "floor",
+   "name": "Substructure + drill floor",
+   "x": 0,
+   "y": 0,
+   "rot": 0
+  },
+  {
+   "id": "K2",
+   "kind": "catwalk",
+   "name": "Catwalk + V-door",
+   "x": 0,
+   "y": -20.5,
+   "rot": 0
+  },
+  {
+   "id": "K3",
+   "kind": "piperack",
+   "name": "Pipe racks",
+   "x": 0,
+   "y": -43,
+   "rot": 0
+  },
+  {
+   "id": "K4",
+   "kind": "shaker",
+   "name": "Shale shakers",
+   "x": -11,
+   "y": 5,
+   "rot": 0
+  },
+  {
+   "id": "K5",
+   "kind": "mudtank",
+   "name": "Mud tanks",
+   "x": -28.5,
+   "y": 2,
+   "rot": 0
+  },
+  {
+   "id": "K6",
+   "kind": "mudpump",
+   "name": "Mud pumps",
+   "x": -30.5,
+   "y": 18,
+   "rot": 0
+  },
+  {
+   "id": "K7",
+   "kind": "water",
+   "name": "Water tanks",
+   "x": -56,
+   "y": 2,
+   "rot": 0
+  },
+  {
+   "id": "K8",
+   "kind": "chem",
+   "name": "Chemical store",
+   "x": -56,
+   "y": 20,
+   "rot": 0
+  },
+  {
+   "id": "K9",
+   "kind": "gen",
+   "name": "Generators / SCR",
+   "x": 25,
+   "y": 16,
+   "rot": 0
+  },
+  {
+   "id": "K10",
+   "kind": "fuel",
+   "name": "Fuel tanks",
+   "x": 45,
+   "y": 16,
+   "rot": 0
+  },
+  {
+   "id": "K11",
+   "kind": "accum",
+   "name": "Accumulator (BOP)",
+   "x": 28,
+   "y": -25,
+   "rot": 0
+  },
+  {
+   "id": "K12",
+   "kind": "flare",
+   "name": "Flare pit",
+   "x": 76,
+   "y": -57,
+   "rot": 0
+  },
+  {
+   "id": "K13",
+   "kind": "camp",
+   "name": "Camp + offices",
+   "x": -82,
+   "y": 49,
+   "rot": 0
+  },
+  {
+   "id": "K14",
+   "kind": "parking",
+   "name": "Parking",
+   "x": -87,
+   "y": -44,
+   "rot": 0
+  },
+  {
+   "id": "K15",
+   "kind": "gate",
+   "name": "Gate + guardhouse",
+   "x": -108,
+   "y": -26,
+   "rot": 0
+  },
+  {
+   "id": "K16",
+   "kind": "muster",
+   "name": "Muster point",
+   "x": -74,
+   "y": 62,
+   "rot": 0
+  },
+  {
+   "id": "K17",
+   "kind": "muster",
+   "name": "Muster point",
+   "x": -88,
+   "y": -70,
+   "rot": 0
+  },
+  {
+   "id": "K18",
+   "kind": "crane",
+   "name": "Crane",
+   "x": 22,
+   "y": -46,
+   "rot": 0,
+   "radius": 22
+  }
+ ],
+ "cameras": [
+  {
+   "id": "C1",
+   "m": "ex4k",
+   "x": 2,
+   "y": 24,
+   "h": 16,
+   "yaw": -90,
+   "pitch": 28,
+   "fov": 80,
+   "surf": 8,
+   "model": "Ex-rated 4K (Zone 1)",
+   "res": "3840x2160",
+   "calibration_points": [
+    {
+     "name": "Substructure + drill floor SW corner",
+     "world": [
+      -7,
+      -7
+     ],
+     "predicted_px": [
+      2582,
+      529
+     ]
+    },
+    {
+     "name": "Substructure + drill floor NE corner",
+     "world": [
+      7,
+      7
+     ],
+     "predicted_px": [
+      1310,
+      968
+     ]
+    },
+    {
+     "name": "Substructure + drill floor NW corner",
+     "world": [
+      -7,
+      7
+     ],
+     "predicted_px": [
+      3017,
+      968
+     ]
+    },
+    {
+     "name": "Substructure + drill floor SE corner",
+     "world": [
+      7,
+      -7
+     ],
+     "predicted_px": [
+      1552,
+      529
+     ]
+    }
+   ]
+  },
+  {
+   "id": "C2",
+   "m": "ex4k",
+   "x": 12,
+   "y": 0,
+   "h": 14,
+   "yaw": 180,
+   "pitch": 26,
+   "fov": 90,
+   "surf": 8,
+   "model": "Ex-rated 4K (Zone 1)",
+   "res": "3840x2160",
+   "calibration_points": [
+    {
+     "name": "Substructure + drill floor SW corner",
+     "world": [
+      -7,
+      -7
+     ],
+     "predicted_px": [
+      1238,
+      794
+     ]
+    },
+    {
+     "name": "Substructure + drill floor NW corner",
+     "world": [
+      -7,
+      7
+     ],
+     "predicted_px": [
+      2602,
+      794
+     ]
+    }
+   ]
+  },
+  {
+   "id": "C3",
+   "m": "b4k",
+   "x": 24,
+   "y": -38,
+   "h": 12,
+   "yaw": -165,
+   "pitch": 30,
+   "fov": 90,
+   "surf": 0,
+   "model": "Fixed bullet 4K",
+   "res": "3840x2160",
+   "calibration_points": [
+    {
+     "name": "Catwalk + V-door SW corner",
+     "world": [
+      -3,
+      -33.5
+     ],
+     "predicted_px": [
+      2709,
+      936
+     ]
+    },
+    {
+     "name": "Pipe racks SE corner",
+     "world": [
+      17,
+      -50
+     ],
+     "predicted_px": [
+      629,
+      1801
+     ]
+    },
+    {
+     "name": "Pipe racks SW corner",
+     "world": [
+      -17,
+      -50
+     ],
+     "predicted_px": [
+      1876,
+      590
+     ]
+    },
+    {
+     "name": "Pipe racks NW corner",
+     "world": [
+      -17,
+      -36
+     ],
+     "predicted_px": [
+      2524,
+      639
+     ]
+    },
+    {
+     "name": "Catwalk + V-door SE corner",
+     "world": [
+      3,
+      -33.5
+     ],
+     "predicted_px": [
+      2753,
+      1151
+     ]
+    }
+   ]
+  },
+  {
+   "id": "C4",
+   "m": "b4k",
+   "x": 6,
+   "y": -66,
+   "h": 14,
+   "yaw": 95,
+   "pitch": 16,
+   "fov": 60,
+   "surf": 0,
+   "model": "Fixed bullet 4K",
+   "res": "3840x2160",
+   "calibration_points": [
+    {
+     "name": "Catwalk + V-door SW corner",
+     "world": [
+      -3,
+      -33.5
+     ],
+     "predicted_px": [
+      1349,
+      1482
+     ]
+    },
+    {
+     "name": "Accumulator (BOP) NW corner",
+     "world": [
+      24,
+      -22
+     ],
+     "predicted_px": [
+      3547,
+      1215
+     ]
+    },
+    {
+     "name": "Catwalk + V-door NE corner",
+     "world": [
+      3,
+      -7.5
+     ],
+     "predicted_px": [
+      2037,
+      932
+     ]
+    },
+    {
+     "name": "Catwalk + V-door SE corner",
+     "world": [
+      3,
+      -33.5
+     ],
+     "predicted_px": [
+      1905,
+      1501
+     ]
+    },
+    {
+     "name": "Pipe racks NE corner",
+     "world": [
+      17,
+      -36
+     ],
+     "predicted_px": [
+      3345,
+      1656
+     ]
+    },
+    {
+     "name": "Catwalk + V-door NW corner",
+     "world": [
+      -3,
+      -7.5
+     ],
+     "predicted_px": [
+      1708,
+      925
+     ]
+    }
+   ]
+  },
+  {
+   "id": "C5",
+   "m": "exb",
+   "x": -28,
+   "y": 30,
+   "h": 12,
+   "yaw": -90,
+   "pitch": 38,
+   "fov": 80,
+   "surf": 0,
+   "model": "Ex-rated 1080p (Zone 1)",
+   "res": "1920x1080",
+   "calibration_points": [
+    {
+     "name": "Catwalk + V-door NW corner",
+     "world": [
+      -3,
+      -7.5
+     ],
+     "predicted_px": [
+      186,
+      118
+     ]
+    },
+    {
+     "name": "Mud pumps SW corner",
+     "world": [
+      -40,
+      13
+     ],
+     "predicted_px": [
+      1621,
+      484
+     ]
+    },
+    {
+     "name": "Mud pumps NE corner",
+     "world": [
+      -21,
+      23
+     ],
+     "predicted_px": [
+      339,
+      996
+     ]
+    },
+    {
+     "name": "Mud pumps SE corner",
+     "world": [
+      -21,
+      13
+     ],
+     "predicted_px": [
+      575,
+      484
+     ]
+    },
+    {
+     "name": "Mud tanks SW corner",
+     "world": [
+      -40,
+      -6
+     ],
+     "predicted_px": [
+      1344,
+      133
+     ]
+    },
+    {
+     "name": "Mud tanks SE corner",
+     "world": [
+      -17,
+      -6
+     ],
+     "predicted_px": [
+      608,
+      133
+     ]
+    }
+   ]
+  },
+  {
+   "id": "C6",
+   "m": "b4k",
+   "x": -52,
+   "y": 4,
+   "h": 12,
+   "yaw": 10,
+   "pitch": 32,
+   "fov": 90,
+   "surf": 0,
+   "model": "Fixed bullet 4K",
+   "res": "3840x2160",
+   "calibration_points": [
+    {
+     "name": "Catwalk + V-door NE corner",
+     "world": [
+      3,
+      -7.5
+     ],
+     "predicted_px": [
+      2712,
+      417
+     ]
+    },
+    {
+     "name": "Mud pumps NW corner",
+     "world": [
+      -40,
+      23
+     ],
+     "predicted_px": [
+      255,
+      1297
+     ]
+    },
+    {
+     "name": "Mud tanks SW corner",
+     "world": [
+      -40,
+      -6
+     ],
+     "predicted_px": [
+      3457,
+      1703
+     ]
+    },
+    {
+     "name": "Mud tanks NW corner",
+     "world": [
+      -40,
+      10
+     ],
+     "predicted_px": [
+      1495,
+      1454
+     ]
+    },
+    {
+     "name": "Mud pumps NE corner",
+     "world": [
+      -21,
+      23
+     ],
+     "predicted_px": [
+      1190,
+      655
+     ]
+    },
+    {
+     "name": "Mud tanks NE corner",
+     "world": [
+      -17,
+      10
+     ],
+     "predicted_px": [
+      1929,
+      625
+     ]
+    }
+   ]
+  },
+  {
+   "id": "C7",
+   "m": "b4k",
+   "x": 30,
+   "y": 34,
+   "h": 12,
+   "yaw": -100,
+   "pitch": 34,
+   "fov": 90,
+   "surf": 0,
+   "model": "Fixed bullet 4K",
+   "res": "3840x2160",
+   "calibration_points": [
+    {
+     "name": "Catwalk + V-door NE corner",
+     "world": [
+      3,
+      -7.5
+     ],
+     "predicted_px": [
+      2757,
+      410
+     ]
+    },
+    {
+     "name": "Fuel tanks NW corner",
+     "world": [
+      40,
+      22
+     ],
+     "predicted_px": [
+      400,
+      1629
+     ]
+    },
+    {
+     "name": "Accumulator (BOP) NE corner",
+     "world": [
+      32,
+      -22
+     ],
+     "predicted_px": [
+      1489,
+      318
+     ]
+    },
+    {
+     "name": "Generators / SCR NW corner",
+     "world": [
+      14,
+      22
+     ],
+     "predicted_px": [
+      3316,
+      1262
+     ]
+    },
+    {
+     "name": "Fuel tanks SW corner",
+     "world": [
+      40,
+      10
+     ],
+     "predicted_px": [
+      838,
+      903
+     ]
+    },
+    {
+     "name": "Shale shakers SE corner",
+     "world": [
+      -7,
+      2
+     ],
+     "predicted_px": [
+      3474,
+      513
+     ]
+    }
+   ]
+  },
+  {
+   "id": "C8",
+   "m": "ptz",
+   "x": 46,
+   "y": -36,
+   "h": 12,
+   "yaw": -25,
+   "pitch": 18,
+   "fov": 40,
+   "surf": 0,
+   "model": "PTZ 4K (zoom set)",
+   "res": "3840x2160",
+   "calibration_points": [
+    {
+     "name": "Flare pit SE corner",
+     "world": [
+      82,
+      -62
+     ],
+     "predicted_px": [
+      2895,
+      839
+     ]
+    },
+    {
+     "name": "Flare pit NE corner",
+     "world": [
+      82,
+      -52
+     ],
+     "predicted_px": [
+      1829,
+      983
+     ]
+    },
+    {
+     "name": "Flare pit NW corner",
+     "world": [
+      70,
+      -52
+     ],
+     "predicted_px": [
+      2666,
+      1525
+     ]
+    }
+   ]
+  },
+  {
+   "id": "C9",
+   "m": "b4k",
+   "x": -80,
+   "y": -20,
+   "h": 8,
+   "yaw": -150,
+   "pitch": 24,
+   "fov": 90,
+   "surf": 0,
+   "model": "Fixed bullet 4K",
+   "res": "3840x2160",
+   "calibration_points": [
+    {
+     "name": "Parking SW corner",
+     "world": [
+      -100,
+      -52
+     ],
+     "predicted_px": [
+      911,
+      724
+     ]
+    },
+    {
+     "name": "Gate + guardhouse NW corner",
+     "world": [
+      -112,
+      -22
+     ],
+     "predicted_px": [
+      2849,
+      795
+     ]
+    },
+    {
+     "name": "Parking NW corner",
+     "world": [
+      -100,
+      -36
+     ],
+     "predicted_px": [
+      1639,
+      862
+     ]
+    },
+    {
+     "name": "Gate + guardhouse SE corner",
+     "world": [
+      -104,
+      -30
+     ],
+     "predicted_px": [
+      2159,
+      852
+     ]
+    },
+    {
+     "name": "Gate + guardhouse SW corner",
+     "world": [
+      -112,
+      -30
+     ],
+     "predicted_px": [
+      2345,
+      733
+     ]
+    },
+    {
+     "name": "Gate + guardhouse NE corner",
+     "world": [
+      -104,
+      -22
+     ],
+     "predicted_px": [
+      2771,
+      951
+     ]
+    }
+   ]
+  },
+  {
+   "id": "C10",
+   "m": "b1080",
+   "x": -64,
+   "y": 46,
+   "h": 8,
+   "yaw": 125,
+   "pitch": 24,
+   "fov": 80,
+   "surf": 0,
+   "model": "Fixed bullet 1080p",
+   "res": "1920x1080",
+   "calibration_points": [
+    {
+     "name": "Camp + offices NE corner",
+     "world": [
+      -66,
+      62
+     ],
+     "predicted_px": [
+      1490,
+      646
+     ]
+    },
+    {
+     "name": "Camp + offices NW corner",
+     "world": [
+      -98,
+      62
+     ],
+     "predicted_px": [
+      313,
+      334
+     ]
+    },
+    {
+     "name": "Muster point NW corner",
+     "world": [
+      -77,
+      65
+     ],
+     "predicted_px": [
+      972,
+      443
+     ]
+    },
+    {
+     "name": "Muster point NE corner",
+     "world": [
+      -71,
+      65
+     ],
+     "predicted_px": [
+      1239,
+      505
+     ]
+    },
+    {
+     "name": "Muster point SW corner",
+     "world": [
+      -77,
+      59
+     ],
+     "predicted_px": [
+      775,
+      537
+     ]
+    },
+    {
+     "name": "Muster point SE corner",
+     "world": [
+      -71,
+      59
+     ],
+     "predicted_px": [
+      1078,
+      632
+     ]
+    }
+   ]
+  },
+  {
+   "id": "C11",
+   "m": "b1080",
+   "x": -72,
+   "y": -58,
+   "h": 8,
+   "yaw": -135,
+   "pitch": 24,
+   "fov": 80,
+   "surf": 0,
+   "model": "Fixed bullet 1080p",
+   "res": "1920x1080",
+   "calibration_points": [
+    {
+     "name": "Muster point SW corner",
+     "world": [
+      -91,
+      -73
+     ],
+     "predicted_px": [
+      1088,
+      428
+     ]
+    },
+    {
+     "name": "Muster point NW corner",
+     "world": [
+      -91,
+      -67
+     ],
+     "predicted_px": [
+      1339,
+      500
+     ]
+    },
+    {
+     "name": "Muster point SE corner",
+     "world": [
+      -85,
+      -73
+     ],
+     "predicted_px": [
+      884,
+      500
+     ]
+    },
+    {
+     "name": "Muster point NE corner",
+     "world": [
+      -85,
+      -67
+     ],
+     "predicted_px": [
+      1145,
+      604
+     ]
+    }
+   ]
+  },
+  {
+   "id": "C12",
+   "m": "th",
+   "x": 96,
+   "y": 76,
+   "h": 12,
+   "yaw": -135,
+   "pitch": 8,
+   "fov": 40,
+   "surf": 0,
+   "model": "Thermal 640\u00d7512",
+   "res": "640x512",
+   "calibration_points": []
+  },
+  {
+   "id": "C13",
+   "m": "th",
+   "x": -111,
+   "y": -81,
+   "h": 12,
+   "yaw": 45,
+   "pitch": 8,
+   "fov": 40,
+   "surf": 0,
+   "model": "Thermal 640\u00d7512",
+   "res": "640x512",
+   "calibration_points": [
+    {
+     "name": "Parking SE corner",
+     "world": [
+      -74,
+      -52
+     ],
+     "predicted_px": [
+      424,
+      355
+     ]
+    },
+    {
+     "name": "Muster point NE corner",
+     "world": [
+      -85,
+      -67
+     ],
+     "predicted_px": [
+      571,
+      491
+     ]
+    },
+    {
+     "name": "Parking NE corner",
+     "world": [
+      -74,
+      -36
+     ],
+     "predicted_px": [
+      236,
+      313
+     ]
+    }
+   ]
+  },
+  {
+   "id": "C14",
+   "m": "b4k",
+   "x": 38,
+   "y": -12,
+   "h": 10,
+   "yaw": -140,
+   "pitch": 32,
+   "fov": 85,
+   "surf": 0,
+   "model": "Fixed bullet 4K",
+   "res": "3840x2160",
+   "calibration_points": [
+    {
+     "name": "Catwalk + V-door SW corner",
+     "world": [
+      -3,
+      -33.5
+     ],
+     "predicted_px": [
+      2394,
+      337
+     ]
+    },
+    {
+     "name": "Crane SE corner",
+     "world": [
+      25,
+      -49
+     ],
+     "predicted_px": [
+      685,
+      499
+     ]
+    },
+    {
+     "name": "Accumulator (BOP) NE corner",
+     "world": [
+      32,
+      -22
+     ],
+     "predicted_px": [
+      1376,
+      1457
+     ]
+    },
+    {
+     "name": "Pipe racks NE corner",
+     "world": [
+      17,
+      -36
+     ],
+     "predicted_px": [
+      1600,
+      542
+     ]
+    },
+    {
+     "name": "Accumulator (BOP) NW corner",
+     "world": [
+      24,
+      -22
+     ],
+     "predicted_px": [
+      2061,
+      1016
+     ]
+    },
+    {
+     "name": "Accumulator (BOP) SE corner",
+     "world": [
+      32,
+      -28
+     ],
+     "predicted_px": [
+      938,
+      1150
+     ]
+    }
+   ]
+  }
+ ],
+ "zones": [
+  {
+   "id": "K1.0",
+   "name": "Drill floor red zone",
+   "component": "K1",
+   "shape": "circle",
+   "center": [
+    0,
+    0
+   ],
+   "r": 6,
+   "surface_m": 8,
+   "detectable": 1,
+   "fall_ready": 1,
+   "cameras": [
+    "C1",
+    "C2"
+   ],
+   "rules": [
+    {
+     "id": "red",
+     "hz": "H02",
+     "pri": "P1",
+     "on": true,
+     "status": "Live"
+    },
+    {
+     "id": "fall",
+     "hz": "H06",
+     "pri": "P2",
+     "on": true,
+     "status": "Live"
+    },
+    {
+     "id": "ppe",
+     "hz": "H03",
+     "pri": "P1",
+     "on": true,
+     "status": "Live"
+    },
+    {
+     "id": "height",
+     "hz": "H07",
+     "pri": "P2",
+     "on": true,
+     "status": "Live"
+    }
+   ]
+  },
+  {
+   "id": "K2.0",
+   "name": "Catwalk + V-door",
+   "component": "K2",
+   "shape": "rect",
+   "rect": [
+    -4,
+    -34.5,
+    8,
+    28
+   ],
+   "surface_m": 0,
+   "detectable": 0.971,
+   "fall_ready": 0.843,
+   "cameras": [
+    "C3",
+    "C4",
+    "C14",
+    "C2",
+    "C5"
+   ],
+   "rules": [
+    {
+     "id": "lof",
+     "hz": "",
+     "pri": null,
+     "on": true,
+     "status": "Live"
+    },
+    {
+     "id": "fall",
+     "hz": "H06",
+     "pri": "P2",
+     "on": true,
+     "status": "Partial"
+    },
+    {
+     "id": "ppe",
+     "hz": "H03",
+     "pri": "P1",
+     "on": true,
+     "status": "Live"
+    }
+   ]
+  },
+  {
+   "id": "K3.0",
+   "name": "Pipe racks",
+   "component": "K3",
+   "shape": "rect",
+   "rect": [
+    -19,
+    -52,
+    38,
+    18
+   ],
+   "surface_m": 0,
+   "detectable": 0.742,
+   "fall_ready": 0.295,
+   "cameras": [
+    "C3",
+    "C4",
+    "C14"
+   ],
+   "rules": [
+    {
+     "id": "fork",
+     "hz": "",
+     "pri": null,
+     "on": true,
+     "status": "Partial"
+    },
+    {
+     "id": "lof",
+     "hz": "",
+     "pri": null,
+     "on": true,
+     "status": "Partial"
+    },
+    {
+     "id": "ppe",
+     "hz": "H03",
+     "pri": "P1",
+     "on": true,
+     "status": "Partial"
+    }
+   ]
+  },
+  {
+   "id": "K4.0",
+   "name": "Shaker area",
+   "component": "K4",
+   "shape": "rect",
+   "rect": [
+    -17,
+    0,
+    12,
+    10
+   ],
+   "surface_m": 0,
+   "detectable": 1,
+   "fall_ready": 0.944,
+   "cameras": [
+    "C1",
+    "C5",
+    "C2",
+    "C7"
+   ],
+   "rules": [
+    {
+     "id": "h2s",
+     "hz": "H05",
+     "pri": "P1",
+     "on": true,
+     "status": "Video + feed"
+    },
+    {
+     "id": "fall",
+     "hz": "H06",
+     "pri": "P2",
+     "on": true,
+     "status": "Live"
+    },
+    {
+     "id": "smoke",
+     "hz": "",
+     "pri": null,
+     "on": true,
+     "status": "Live"
+    }
+   ]
+  },
+  {
+   "id": "K5.0",
+   "name": "Mud tanks",
+   "component": "K5",
+   "shape": "rect",
+   "rect": [
+    -41,
+    -7,
+    25,
+    18
+   ],
+   "surface_m": 0,
+   "detectable": 1,
+   "fall_ready": 0.778,
+   "cameras": [
+    "C5",
+    "C6",
+    "C1"
+   ],
+   "rules": [
+    {
+     "id": "conf",
+     "hz": "H08",
+     "pri": "P2",
+     "on": true,
+     "status": "Video + feed"
+    },
+    {
+     "id": "h2s",
+     "hz": "H05",
+     "pri": "P1",
+     "on": true,
+     "status": "Video + feed"
+    },
+    {
+     "id": "fall",
+     "hz": "H06",
+     "pri": "P2",
+     "on": true,
+     "status": "Partial"
+    }
+   ]
+  },
+  {
+   "id": "K6.0",
+   "name": "Mud pumps",
+   "component": "K6",
+   "shape": "rect",
+   "rect": [
+    -41,
+    12,
+    21,
+    12
+   ],
+   "surface_m": 0,
+   "detectable": 0.948,
+   "fall_ready": 0.169,
+   "cameras": [
+    "C5",
+    "C6"
+   ],
+   "rules": [
+    {
+     "id": "bypass",
+     "hz": "",
+     "pri": null,
+     "on": true,
+     "status": "Needs feed"
+    },
+    {
+     "id": "iso",
+     "hz": "",
+     "pri": null,
+     "on": true,
+     "status": "Needs feed"
+    },
+    {
+     "id": "ppe",
+     "hz": "H03",
+     "pri": "P1",
+     "on": true,
+     "status": "Live"
+    }
+   ]
+  },
+  {
+   "id": "K8.0",
+   "name": "Chemical store",
+   "component": "K8",
+   "shape": "rect",
+   "rect": [
+    -63,
+    15,
+    14,
+    10
+   ],
+   "surface_m": 0,
+   "detectable": 0,
+   "fall_ready": 0,
+   "cameras": [],
+   "rules": [
+    {
+     "id": "ppe",
+     "hz": "H03",
+     "pri": "P1",
+     "on": true,
+     "status": "No coverage"
+    },
+    {
+     "id": "conf",
+     "hz": "H08",
+     "pri": "P2",
+     "on": true,
+     "status": "No coverage"
+    }
+   ]
+  },
+  {
+   "id": "K9.0",
+   "name": "Power area",
+   "component": "K9",
+   "shape": "rect",
+   "rect": [
+    12,
+    8,
+    26,
+    16
+   ],
+   "surface_m": 0,
+   "detectable": 0.992,
+   "fall_ready": 0.103,
+   "cameras": [
+    "C1",
+    "C7",
+    "C12"
+   ],
+   "rules": [
+    {
+     "id": "hot",
+     "hz": "H08",
+     "pri": "P2",
+     "on": true,
+     "status": "Video + feed"
+    },
+    {
+     "id": "iso",
+     "hz": "",
+     "pri": null,
+     "on": true,
+     "status": "Needs feed"
+    }
+   ]
+  },
+  {
+   "id": "K10.0",
+   "name": "Fuel area",
+   "component": "K10",
+   "shape": "rect",
+   "rect": [
+    37,
+    7,
+    16,
+    18
+   ],
+   "surface_m": 0,
+   "detectable": 1,
+   "fall_ready": 0.222,
+   "cameras": [
+    "C7",
+    "C12"
+   ],
+   "rules": [
+    {
+     "id": "smoke",
+     "hz": "",
+     "pri": null,
+     "on": true,
+     "status": "Live"
+    },
+    {
+     "id": "hot",
+     "hz": "H08",
+     "pri": "P2",
+     "on": true,
+     "status": "Video + feed"
+    }
+   ]
+  },
+  {
+   "id": "K11.0",
+   "name": "Accumulator keep-clear",
+   "component": "K11",
+   "shape": "rect",
+   "rect": [
+    21,
+    -31,
+    14,
+    12
+   ],
+   "surface_m": 0,
+   "detectable": 1,
+   "fall_ready": 0,
+   "cameras": [
+    "C4",
+    "C14"
+   ],
+   "rules": [
+    {
+     "id": "excl",
+     "hz": "",
+     "pri": "P2",
+     "on": true,
+     "status": "Live"
+    }
+   ]
+  },
+  {
+   "id": "K12.0",
+   "name": "Flare exclusion",
+   "component": "K12",
+   "shape": "circle",
+   "center": [
+    76,
+    -57
+   ],
+   "r": 16,
+   "surface_m": 0,
+   "detectable": 0.77,
+   "fall_ready": 0,
+   "cameras": [
+    "C8"
+   ],
+   "rules": [
+    {
+     "id": "excl",
+     "hz": "",
+     "pri": "P2",
+     "on": true,
+     "status": "Partial"
+    }
+   ]
+  },
+  {
+   "id": "K14.0",
+   "name": "Parking",
+   "component": "K14",
+   "shape": "rect",
+   "rect": [
+    -100,
+    -52,
+    26,
+    16
+   ],
+   "surface_m": 0,
+   "detectable": 0.952,
+   "fall_ready": 0,
+   "cameras": [
+    "C9",
+    "C13"
+   ],
+   "rules": [
+    {
+     "id": "drive",
+     "hz": "",
+     "pri": null,
+     "on": true,
+     "status": "Live"
+    }
+   ]
+  },
+  {
+   "id": "K15.0",
+   "name": "Gate",
+   "component": "K15",
+   "shape": "rect",
+   "rect": [
+    -120,
+    -38,
+    24,
+    24
+   ],
+   "surface_m": 0,
+   "detectable": 0.762,
+   "fall_ready": 0,
+   "cameras": [
+    "C9"
+   ],
+   "rules": [
+    {
+     "id": "drive",
+     "hz": "",
+     "pri": null,
+     "on": true,
+     "status": "Partial"
+    }
+   ]
+  },
+  {
+   "id": "K16.0",
+   "name": "Muster point",
+   "component": "K16",
+   "shape": "circle",
+   "center": [
+    -74,
+    62
+   ],
+   "r": 7,
+   "surface_m": 0,
+   "detectable": 1,
+   "fall_ready": 0,
+   "cameras": [
+    "C10"
+   ],
+   "rules": [
+    {
+     "id": "muster",
+     "hz": "H10",
+     "pri": "P2",
+     "on": true,
+     "status": "Live"
+    }
+   ]
+  },
+  {
+   "id": "K17.0",
+   "name": "Muster point",
+   "component": "K17",
+   "shape": "circle",
+   "center": [
+    -88,
+    -70
+   ],
+   "r": 7,
+   "surface_m": 0,
+   "detectable": 1,
+   "fall_ready": 0,
+   "cameras": [
+    "C11",
+    "C13"
+   ],
+   "rules": [
+    {
+     "id": "muster",
+     "hz": "H10",
+     "pri": "P2",
+     "on": true,
+     "status": "Live"
+    }
+   ]
+  },
+  {
+   "id": "K18.0",
+   "name": "Crane swing / load zone",
+   "component": "K18",
+   "shape": "circle",
+   "center": [
+    22,
+    -46
+   ],
+   "r": 22,
+   "surface_m": 0,
+   "detectable": 0.668,
+   "fall_ready": 0.143,
+   "cameras": [
+    "C3",
+    "C14",
+    "C4"
+   ],
+   "rules": [
+    {
+     "id": "lift",
+     "hz": "H01",
+     "pri": "P1",
+     "on": true,
+     "status": "Partial"
+    }
+   ]
+  }
+ ],
+ "forecast_per_week": {
+  "red": {
+   "alerts": 4.97,
+   "false_alarms": 0.99,
+   "missed_no_coverage": 0,
+   "missed_detector": 0.03
+  },
+  "fall": {
+   "alerts": 1.14,
+   "false_alarms": 0.25,
+   "missed_no_coverage": 0.22,
+   "missed_detector": 0.64
+  },
+  "ppe": {
+   "alerts": 5.97,
+   "false_alarms": 0.55,
+   "missed_no_coverage": 2.41,
+   "missed_detector": 0.62
+  },
+  "height": {
+   "alerts": 2.49,
+   "false_alarms": 0.34,
+   "missed_no_coverage": 0,
+   "missed_detector": 0.51
+  },
+  "lof": {
+   "alerts": 2.83,
+   "false_alarms": 0.52,
+   "missed_no_coverage": 0.57,
+   "missed_detector": 0.6
+  },
+  "fork": {
+   "alerts": 3.31,
+   "false_alarms": 0.48,
+   "missed_no_coverage": 1.29,
+   "missed_detector": 0.4
+  },
+  "h2s": {
+   "alerts": 0.46,
+   "false_alarms": 0.08,
+   "missed_no_coverage": 0,
+   "missed_detector": 0.04
+  },
+  "smoke": {
+   "alerts": 0.69,
+   "false_alarms": 0.23,
+   "missed_no_coverage": 0,
+   "missed_detector": 0.31
+  },
+  "conf": {
+   "alerts": 0.53,
+   "false_alarms": 0.16,
+   "missed_no_coverage": 0.75,
+   "missed_detector": 0.22
+  },
+  "hot": {
+   "alerts": 1.61,
+   "false_alarms": 0.46,
+   "missed_no_coverage": 0.01,
+   "missed_detector": 0.38
+  },
+  "excl": {
+   "alerts": 1.57,
+   "false_alarms": 0.17,
+   "missed_no_coverage": 0.23,
+   "missed_detector": 0.2
+  },
+  "drive": {
+   "alerts": 2.69,
+   "false_alarms": 0.65,
+   "missed_no_coverage": 0.57,
+   "missed_detector": 0.73
+  },
+  "muster": {
+   "alerts": 0.45,
+   "false_alarms": 0.05,
+   "missed_no_coverage": 0,
+   "missed_detector": 0.05
+  },
+  "lift": {
+   "alerts": 3.84,
+   "false_alarms": 2.32,
+   "missed_no_coverage": 1.99,
+   "missed_detector": 0.17
+  }
+ }
+}

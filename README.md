@@ -15,18 +15,25 @@ crates/
                  events, Rule Studio engine (gap tolerance, priority cooldowns, SHA-256 ledger)
   vg360-pipeline per-camera worker: camera guard → shift compensation → detection → scene → rules;
                  runs on an RTSP stream or a file replayed as a camera (spawn_stream)
+  vg360-rules    scene state → IOGP facts → iogp-runtime (rules written and approved in iogp-editor,
+                 dhaneshkk/test1_logpeditor); per-rule MCC on the simulated site; approval + MCC gate
+  vg360-evidence tamper-evident provenance in vesdb (dhaneshkk/test1_vesdb): ruleset, model,
+                 calibration, camera-guard and incident events, receipts, spool, offline bundles
   vg360-infer    YOLOX-Nano person detector + PPE classifier: letterbox, grid decode, NMS,
                  full frame + 3×3 tiles, fisheye virtual views; engines: tract (pure Rust) / ONNX Runtime
 apps/
   vg360-server   Topcoat 0.12 operator console + OpenAI-compatible API
 models/          ppe_clifford_folded.onnx (committed); yolox_nano.onnx via scripts/fetch_models.sh (SHA-256 checked)
 scripts/         fetch_models.sh, export_golden.py, export_golden_scene.py (notebook reference path → testdata/golden)
+config/          vg360_site_catalog.json (iogp-editor vocabulary for this rig), vg360_rules.ace (the 5 rules in
+                 controlled English), vg360_rules.draft.json (iogp-editor export, NOT approved),
+                 vg360_rules.validation.json (MCC per rule)
 notebooks/       vg360_clifford_safety_cpu.ipynb (single cell; to be split into training-only in Phase 5)
 lean/            CGA.lean — theorems behind the closed forms (not yet machine-checked in CI)
 testdata/        notebook exports (rules, ledger) and frames used by the golden tests
 ```
 
-## Status — Phases 0–3
+## Status — Phases 0–3 + integration (Rig Twin, Rule Studio, iogp-editor, vesdb)
 
 | Area | State |
 |---|---|
@@ -108,3 +115,48 @@ answers deterministically from site state (no LLM), so every number it gives is 
 Rule MCCs come from the notebook's simulated site; PPE MCC (0.82) is on synthetic crops; the
 Clifford-conv PPE model has not yet been compared against a plain CNN; Lean proofs are not yet
 machine-checked. Console thumbnails CAM-01…04 are frames of one simulated feed.
+
+## Integration: Rig Twin · Rule Studio · iogp-editor · vesdb
+
+**Rules (iogp-editor → iogp-runtime).** The five rules are written in controlled English
+(`config/vg360_rules.ace`) against a site catalog that extends iogp-editor's built-in vocabulary
+(`fallen-person`, `pipe-handling` signal, `person-down-alert`, `ppe-alert`; `near` = 1 m). Compile:
+
+```sh
+iogp --prolog-dir ../ape-rs/prolog-scryer --catalog config/vg360_site_catalog.json \
+     compile --file config/vg360_rules.ace > config/vg360_rules.draft.json
+cargo run --release -p vg360-rules --example validate      # → config/vg360_rules.validation.json
+```
+
+The committed config is a **draft**: no rule is approved, so every rule runs in shadow mode.
+To arm rules, an author submits and a *different* approver signs them off in `iogp serve`
+(four-eyes), then `/export/config.json` is deployed with `VG360_RULES_CONFIG`. A rule sounds only when
+it is approved **and** its MCC clears the floor for its severity.
+
+| rule | severity → floor | MCC (simulated site) | state |
+|---|---|---|---|
+| LIFT · worker under a suspended load ≥ 3 s | critical 0.85 | 0.771 | below floor |
+| RED · in Red-Zone while pipe handling | critical 0.85 | 0.903 | clears floor |
+| EDGE · near Deck-Edge (1 m) | critical 0.85 | 0.899 | clears floor |
+| FALL · fallen person ≥ 2 s | high 0.75 | 0.798 | clears floor |
+| PPE · no hard hat ≥ 2 s | critical 0.85 | 0.820 (synthetic crops) | below floor |
+
+**Evidence (vesdb).** With `VG360_VESDB_URL`, `VG360_VESDB_WRITE_TOKEN`, `VG360_VESDB_AUDIT_TOKEN` set,
+each raised alert is an incident (`hazard-detected` + `alert-raised`, frame SHA-256, ruleset / model /
+calibration hashes, armed or shadow) opened with `isSubjectPristine`; camera-guard changes, twin
+calibrations, model and ruleset deployments are logged too. `cargo test -p vg360-evidence` with
+`VESDB_BIN_DIR` runs a real log + witness, survives an outage via the spool, and verifies the bundle
+offline with `vesdb-verify` (a swapped frame fails).
+
+**Console.** `/twin` embeds the Rig Twin editor; *Apply to site* turns every twin camera into a runtime
+camera (compass yaw = 90° − twin heading, f from FOV and resolution, height above the deck it watches),
+checked against the twin's own projection (< 1 px), and logs a `calibration-set` event. `/rules` shows
+the IOGP rules with approval and MCC gates and embeds Rule Studio, fed live from `/api/rule-studio`.
+
+**Licence note.** `iogp-runtime` is pulled from `dhaneshkk/test1_logpeditor`, which is LGPL-3.0-or-later
+at the pinned commit. The plan is to dual-license it; until that lands there, binaries that link it
+carry LGPL relinking obligations.
+
+**Found while integrating (for test1_logpeditor):** iogp-runtime smooths an object's *first* type over
+missed frames but not a second type given to the same id — a person who is also `fall_pose` lost the fall
+timer on every missed frame. The adapter gives the fall pose its own object (`7/down`).

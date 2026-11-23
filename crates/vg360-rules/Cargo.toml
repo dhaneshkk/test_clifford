@@ -1,0 +1,18 @@
+[package]
+name = "vg360-rules"
+description = "VisionGuard360 alert rules: scene state → IOGP facts → iogp-runtime (rules written and approved in iogp-editor)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version = "1.98"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+# inference-time evaluator of rules compiled by iogp-editor (dhaneshkk/test1_logpeditor)
+iogp-runtime = { git = "https://github.com/dhaneshkk/test1_logpeditor", rev = "e35bcd203c33f249282046bfeae45229cc219003" }
+vg360-geom = { path = "../vg360-geom" }
+
+[dev-dependencies]
+vg360-scene = { path = "../vg360-scene" }

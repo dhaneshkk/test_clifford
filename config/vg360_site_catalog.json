@@ -1,0 +1,381 @@
+{
+ "_comment": "VisionGuard360 site catalog for the rig (extends iogp-editor's built-in vg360_catalog.json). Additions: 'fallen-person' (fall-pose detector), 'pipe-handling' (site signal from the drilling control system), and two non-IOGP alerts, person-down-alert and ppe-alert (lsr 0 = not one of the nine Life-Saving Rules). 'near' means within 1 m on this rig (unguarded deck edges).",
+ "agent": "VisionGuard",
+ "classes": [
+  {
+   "noun": "worker",
+   "plural": "workers",
+   "detector": "person",
+   "human": true
+  },
+  {
+   "noun": "person",
+   "plural": "persons",
+   "detector": "person",
+   "human": true
+  },
+  {
+   "noun": "vehicle",
+   "plural": "vehicles",
+   "detector": "vehicle"
+  },
+  {
+   "noun": "forklift",
+   "plural": "forklifts",
+   "detector": "forklift"
+  },
+  {
+   "noun": "crane",
+   "plural": "cranes",
+   "detector": "crane"
+  },
+  {
+   "noun": "suspended-load",
+   "plural": "suspended-loads",
+   "detector": "suspended_load"
+  },
+  {
+   "noun": "flame",
+   "plural": "flames",
+   "detector": "flame"
+  },
+  {
+   "noun": "smoke",
+   "plural": "smokes",
+   "detector": "smoke"
+  },
+  {
+   "noun": "helmet",
+   "plural": "helmets",
+   "detector": "hardhat"
+  },
+  {
+   "noun": "vest",
+   "plural": "vests",
+   "detector": "hi_vis_vest"
+  },
+  {
+   "noun": "harness",
+   "plural": "harnesses",
+   "detector": "harness"
+  },
+  {
+   "noun": "gas-detector",
+   "plural": "gas-detectors",
+   "detector": "gas_detector"
+  },
+  {
+   "noun": "fire-extinguisher",
+   "plural": "fire-extinguishers",
+   "detector": "fire_extinguisher"
+  },
+  {
+   "noun": "phone",
+   "plural": "phones",
+   "detector": "phone"
+  },
+  {
+   "noun": "ladder",
+   "plural": "ladders",
+   "detector": "ladder"
+  },
+  {
+   "noun": "fallen-person",
+   "plural": "fallen-persons",
+   "detector": "fall_pose",
+   "human": true
+  }
+ ],
+ "zones": [
+  {
+   "noun": "exclusion-zone",
+   "plural": "exclusion-zones"
+  },
+  {
+   "noun": "confined-space",
+   "plural": "confined-spaces"
+  },
+  {
+   "noun": "hot-work-area",
+   "plural": "hot-work-areas"
+  },
+  {
+   "noun": "height-zone",
+   "plural": "height-zones"
+  },
+  {
+   "noun": "lifting-zone",
+   "plural": "lifting-zones"
+  },
+  {
+   "noun": "live-equipment-zone",
+   "plural": "live-equipment-zones"
+  },
+  {
+   "noun": "machine-guard-zone",
+   "plural": "machine-guard-zones"
+  },
+  {
+   "noun": "restricted-area",
+   "plural": "restricted-areas"
+  },
+  {
+   "noun": "walkway",
+   "plural": "walkways"
+  }
+ ],
+ "relations": [
+  {
+   "verb": "wear",
+   "third": "wears",
+   "past_participle": "worn",
+   "detector": "ppe_association",
+   "object_kinds": [
+    "class"
+   ]
+  },
+  {
+   "verb": "carry",
+   "third": "carries",
+   "past_participle": "carried",
+   "detector": "carry_association",
+   "object_kinds": [
+    "class"
+   ]
+  },
+  {
+   "verb": "hold",
+   "third": "holds",
+   "past_participle": "held",
+   "detector": "hold_association",
+   "object_kinds": [
+    "class"
+   ]
+  },
+  {
+   "verb": "use",
+   "third": "uses",
+   "past_participle": "used",
+   "detector": "use_association",
+   "object_kinds": [
+    "class"
+   ]
+  },
+  {
+   "verb": "drive",
+   "third": "drives",
+   "past_participle": "driven",
+   "detector": "driver_association",
+   "object_kinds": [
+    "class"
+   ]
+  },
+  {
+   "verb": "have",
+   "third": "has",
+   "past_participle": "had",
+   "detector": "signal",
+   "object_kinds": [
+    "signal"
+   ]
+  }
+ ],
+ "spatial": [
+  {
+   "prep": "in",
+   "detector": "inside_polygon"
+  },
+  {
+   "prep": "under",
+   "detector": "below_footprint"
+  },
+  {
+   "prep": "near",
+   "detector": "within_distance",
+   "default_metres": 1.0
+  },
+  {
+   "prep": "on",
+   "detector": "standing_on"
+  }
+ ],
+ "signals": [
+  {
+   "noun": "permit",
+   "plural": "permits",
+   "source": "permit-to-work system"
+  },
+  {
+   "noun": "isolation-certificate",
+   "plural": "isolation-certificates",
+   "source": "isolation register (LOTO)"
+  },
+  {
+   "noun": "gas-test",
+   "plural": "gas-tests",
+   "source": "gas-test log"
+  },
+  {
+   "noun": "pipe-handling",
+   "plural": "pipe-handlings",
+   "source": "drilling control system"
+  }
+ ],
+ "alerts": [
+  {
+   "noun": "bypassing-safety-controls-alert",
+   "lsr": 1,
+   "rule": "Bypassing Safety Controls"
+  },
+  {
+   "noun": "confined-space-alert",
+   "lsr": 2,
+   "rule": "Confined Space"
+  },
+  {
+   "noun": "driving-alert",
+   "lsr": 3,
+   "rule": "Driving"
+  },
+  {
+   "noun": "energy-isolation-alert",
+   "lsr": 4,
+   "rule": "Energy Isolation"
+  },
+  {
+   "noun": "hot-work-alert",
+   "lsr": 5,
+   "rule": "Hot Work"
+  },
+  {
+   "noun": "line-of-fire-alert",
+   "lsr": 6,
+   "rule": "Line of Fire"
+  },
+  {
+   "noun": "mechanical-lifting-alert",
+   "lsr": 7,
+   "rule": "Safe Mechanical Lifting"
+  },
+  {
+   "noun": "work-authorisation-alert",
+   "lsr": 8,
+   "rule": "Work Authorisation"
+  },
+  {
+   "noun": "working-at-height-alert",
+   "lsr": 9,
+   "rule": "Working at Height"
+  },
+  {
+   "noun": "person-down-alert",
+   "lsr": 0,
+   "rule": "Slip, trip or person down"
+  },
+  {
+   "noun": "ppe-alert",
+   "lsr": 0,
+   "rule": "Missing PPE"
+  }
+ ],
+ "severities": [
+  "critical",
+  "high",
+  "medium",
+  "low"
+ ],
+ "units": [
+  {
+   "noun": "second",
+   "plural": "seconds",
+   "seconds": 1
+  },
+  {
+   "noun": "minute",
+   "plural": "minutes",
+   "seconds": 60
+  }
+ ],
+ "defaults": {
+  "grace_seconds": 0.7,
+  "cooldown_seconds": 3.0
+ },
+ "templates": [
+  {
+   "lsr": 1,
+   "text": "If a worker is in a machine-guard-zone for at least 5 seconds then VisionGuard raises a critical bypassing-safety-controls-alert for the worker."
+  },
+  {
+   "lsr": 2,
+   "text": "If a worker is in a confined-space and does not carry a gas-detector for at least 10 seconds then VisionGuard raises a critical confined-space-alert for the worker."
+  },
+  {
+   "lsr": 3,
+   "text": "If a worker drives a vehicle and uses a phone for at least 3 seconds then VisionGuard raises a critical driving-alert for the worker."
+  },
+  {
+   "lsr": 4,
+   "text": "If a worker is in a live-equipment-zone and the live-equipment-zone does not have an isolation-certificate for at least 5 seconds then VisionGuard raises a critical energy-isolation-alert for the worker."
+  },
+  {
+   "lsr": 5,
+   "text": "If a flame is in a hot-work-area and the hot-work-area does not have a permit for at least 5 seconds then VisionGuard raises a critical hot-work-alert."
+  },
+  {
+   "lsr": 6,
+   "text": "If a worker is under a suspended-load for at least 2 seconds then VisionGuard raises a critical line-of-fire-alert for the worker."
+  },
+  {
+   "lsr": 7,
+   "text": "If at least 3 workers are in a lifting-zone for at least 5 seconds then VisionGuard raises a high mechanical-lifting-alert."
+  },
+  {
+   "lsr": 8,
+   "text": "If a worker is in a restricted-area and the restricted-area does not have a permit for at least 30 seconds then VisionGuard raises a high work-authorisation-alert for the worker."
+  },
+  {
+   "lsr": 9,
+   "text": "If a worker is in a height-zone and does not wear a harness for at least 3 seconds then VisionGuard raises a critical working-at-height-alert for the worker."
+  }
+ ],
+ "cameras": [
+  {
+   "name": "CAM-01",
+   "description": "drill floor, NW mast"
+  },
+  {
+   "name": "CAM-02",
+   "description": "pipe deck catwalk"
+  },
+  {
+   "name": "CAM-03",
+   "description": "pump skids south"
+  },
+  {
+   "name": "CAM-04",
+   "description": "crane 1 lift zone"
+  },
+  {
+   "name": "CAM-05",
+   "description": "mud tanks east"
+  },
+  {
+   "name": "CAM-06",
+   "description": "wellhead fisheye"
+  }
+ ],
+ "zone_instances": [
+  {
+   "name": "Red-Zone",
+   "zone": "exclusion-zone"
+  },
+  {
+   "name": "Deck-Edge",
+   "zone": "height-zone"
+  },
+  {
+   "name": "Deck",
+   "zone": "walkway"
+  }
+ ]
+}

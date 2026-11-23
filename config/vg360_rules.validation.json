@@ -1,0 +1,62 @@
+{
+  "config": "config/vg360_rules.draft.json",
+  "rules": {
+    "EDGE": {
+      "approved": false,
+      "cm": [
+        686,
+        142,
+        3,
+        7187
+      ],
+      "floor": 0.85,
+      "id": "EDGE",
+      "mcc": 0.899130331325363,
+      "severity": "critical",
+      "tier": "P1"
+    },
+    "FALL": {
+      "approved": false,
+      "cm": [
+        324,
+        55,
+        100,
+        7539
+      ],
+      "floor": 0.75,
+      "id": "FALL",
+      "mcc": 0.7982219758765534,
+      "severity": "high",
+      "tier": "P2"
+    },
+    "LIFT": {
+      "approved": false,
+      "cm": [
+        174,
+        103,
+        7,
+        7734
+      ],
+      "floor": 0.85,
+      "id": "LIFT",
+      "mcc": 0.7712018110646678,
+      "severity": "critical",
+      "tier": "P1"
+    },
+    "RED": {
+      "approved": false,
+      "cm": [
+        607,
+        120,
+        4,
+        7287
+      ],
+      "floor": 0.85,
+      "id": "RED",
+      "mcc": 0.9030000972036958,
+      "severity": "critical",
+      "tier": "P1"
+    }
+  },
+  "validated_on": "notebook simulated site, 60 s, 600 frames, 8 018 person records (scripts/export_golden_scene.py); PPE is scored on the PPE crop test set"
+}

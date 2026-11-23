@@ -140,3 +140,9 @@ td.num { font-variant-numeric: tabular-nums; font-family: var(--mono); white-spa
 .plan .lbl { font-size: 14px; }
 .plan .cam { font-size: 14px; }
 .note.okline { color: var(--ok); }
+.banner.warn { background: rgba(227, 179, 65, .10); border-color: rgba(227, 179, 65, .5); }
+.banner.warn strong { color: var(--warn); }
+.readback { margin: 6px 0; padding-left: 18px; color: var(--mute); font-size: 12px; }
+.card.embed { padding: 10px; }
+.card.embed iframe { width: 100%; height: 900px; border: 0; border-radius: 6px; background: #fff; }
+.card.embed.tall iframe { height: 1150px; }

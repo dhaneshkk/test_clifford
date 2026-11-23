@@ -1,6 +1,6 @@
 {
  "vg360_notebook_export": 1,
- "generated": "2026-11-23T13:08:23",
+ "generated": "2026-11-23T13:42:07",
  "source": "notebook simulated site (noisy projected boxes; bodies share the fall-fitter's shape)",
  "rules": {
   "lift": {

@@ -39,7 +39,7 @@ pub async fn overview(cx: &Cx) -> Result<impl View> {
     let site = context::<Site>(cx);
     let (ok, vtxt) = verify_text(&site.ledger_check);
     let alarms: Vec<&Cam> = site.cams.iter().filter(|c| c.guard != Status::Ok).collect();
-    let armed = site.rules.values().filter(|r| r.passes_floor()).count();
+    let armed = site.iogp.armed();
     let feed: Vec<_> = site.ledger.entries.iter().rev().take(12).collect();
     let counts = alert_counts(site);
     Ok(view! {
@@ -54,8 +54,8 @@ pub async fn overview(cx: &Cx) -> Result<impl View> {
             <div class=(class!("kpi", "ok" if ok, "bad" if !ok))>
                 <b>if ok { "✓" } else { "✗" }</b><span>"ledger verified in Rust"</span><em>(vtxt)</em>
             </div>
-            <div class="kpi"><b>(armed) "/" (site.rules.len())</b><span>"rules armed (MCC ≥ floor)"</span>
-                <em>"others run in shadow mode"</em></div>
+            <div class=(class!("kpi", "bad" if site.iogp.draft))><b>(armed) "/" (site.iogp.rules.len())</b><span>"IOGP rules armed"</span>
+                <em>if site.iogp.draft { "draft config — approve in iogp-editor" } else { "approved and MCC ≥ floor" }</em></div>
         </section>
         if let Some(c) = alarms.first() {
             <a class="banner bad" href=(href!(camera, id: c.id))>
@@ -126,7 +126,7 @@ pub async fn camera(cx: &Cx) -> Result<impl View> {
             pts.join(" "), q[0][0] + 14.0, q[0][1].max(0.0) + 34.0))
     });
     let guidance = c.guidance();
-    let cam_rules: Vec<_> = c.rules.iter().filter_map(|r| site.rules.get(*r).map(|rr| (*r, rr))).collect();
+    let cam_rules: Vec<_> = c.rules.iter().filter_map(|r| site.iogp.get(r).map(|rr| (*r, rr))).collect();
     let fisheye = matches!(c.lens, Lens::Fisheye);
     Ok(view! {
         <div class="crumbs"><a href=(href!(overview))>"Overview"</a> " / " (c.id)</div>
@@ -191,12 +191,12 @@ pub async fn camera(cx: &Cx) -> Result<impl View> {
                     <h3>"Rules on this camera"</h3>
                     <ul class="rl">
                         for (rid, r) in cam_rules {
-                            let pass = r.passes_floor() && c.mode != Mode::Paused;
+                            let pass = r.armed && c.mode != Mode::Paused;
                             <li>
                                 <span class="chip">(rid)</span>
-                                <span>(r.name.clone())</span>
+                                <span>(r.alert.clone())</span>
                                 <span class=(class!("pill", "ok" if pass, "warn" if !pass))>
-                                    if c.mode == Mode::Paused { "paused" } else if !r.passes_floor() { "shadow" } else if c.mode == Mode::Compensated { "armed · compensated" } else { "armed" }
+                                    if c.mode == Mode::Paused { "paused" } else if !r.armed { "shadow" } else if c.mode == Mode::Compensated { "armed · compensated" } else { "armed" }
                                 </span>
                             </li>
                         }
@@ -213,60 +213,71 @@ pub async fn camera(cx: &Cx) -> Result<impl View> {
 pub async fn rules(cx: &Cx) -> Result<impl View> {
     let site = context::<Site>(cx);
     let (ok, vtxt) = verify_text(&site.ledger_check);
-    let counts = alert_counts(site);
+    let ir = &site.iogp;
+    let vesdb = site.vesdb.as_ref().map(|v| (v.base.clone(), v.checkpoint().ok()));
     Ok(view! {
         <h1>"Rules & evidence"</h1>
-        <p class="lede">"Each rule is armed only when its validated MCC clears the floor for its priority (P1 0.85 · P2 0.75 · P3 0.60 · untiered 0.80). Below the floor it runs in shadow mode: it is evaluated and logged, but raises no alarm. Validation set: " (site.ledger_source.clone()) "."</p>
+        <p class="lede">"Rules are written in controlled English and approved (author + approver) in "<b>"iogp-editor"</b>
+            "; it compiles them with APE to first-order logic and a detector configuration. Each camera worker evaluates that configuration with "
+            <b>"iogp-runtime"</b>". A rule sounds an alarm only when it is approved "<em>"and"</em>" its validated MCC clears the floor for its severity (critical 0.85 · high 0.75 · medium/low 0.60); otherwise it runs in shadow mode."</p>
+        if ir.draft {
+            <div class="banner warn"><div><strong>"Draft configuration"</strong>" — "(ir.config_path.clone())" was compiled by iogp-editor but no rule has been approved yet, so every rule runs in shadow mode. Approve the rules in iogp-editor (four-eyes sign-off), export "<code>"config.json"</code>" and set "<code>"VG360_RULES_CONFIG"</code>"."</div></div>
+        }
         <section class="card">
+            <h3>"IOGP rules" <small>(format!("config SHA-256 {}…", &ir.sha256[..16]))</small></h3>
             <table class="rules">
-                <thead><tr><th>"Rule"</th><th>"Priority"</th><th>"Statement (Rule Studio)"</th><th>"MCC vs floor"</th><th>"TP / FP / FN"</th><th>"Alerts"</th><th>"State"</th></tr></thead>
+                <thead><tr><th>"Rule"</th><th>"Controlled English (iogp-editor)"</th><th>"Severity"</th><th>"MCC vs floor"</th><th>"TP / FP / FN"</th><th>"Approval"</th><th>"State"</th></tr></thead>
                 <tbody>
-                    for (rid, r) in &site.rules {
+                    for r in &ir.rules {
                         let m = r.mcc.unwrap_or(0.0);
                         let cm = r.cm.unwrap_or([0; 4]);
-                        let pass = r.passes_floor();
+                        let pass = r.mcc.is_some_and(|m| m >= r.floor);
                         <tr>
-                            <td><span class="chip">(rid.clone())</span> <b>(r.name.clone())</b><div class="sub">(r.hz.clone())</div></td>
-                            <td>(r.pri.clone().unwrap_or_else(|| "— untiered".into()))</td>
-                            <td><div>(r.en.clone())</div><code class="fol">(r.fol.clone())</code></td>
+                            <td><span class="chip">(r.id.clone())</span> <b>(r.alert.clone())</b>
+                                <div class="sub">if r.lsr > 0 { (format!("IOGP Life-Saving Rule {}", r.lsr)) } else { "site rule (not an IOGP LSR)" }</div></td>
+                            <td><div>(r.text.clone())</div>
+                                <ul class="readback">for l in r.readback.iter().skip(1) { <li>(l.clone())</li> }</ul>
+                                <code class="fol">(r.fol.clone())</code></td>
+                            <td>(r.severity.clone().unwrap_or_default()) <div class="sub">(r.tier.clone())</div></td>
                             <td class="bar">
                                 <div class="track">
                                     <div class=(class!("fill", "ok" if pass, "warn" if !pass)) style=(format!("width:{:.1}%", m.max(0.0) * 100.0))></div>
                                     <div class="floor" style=(format!("left:{:.1}%", r.floor * 100.0))></div>
                                 </div>
                                 <div class="sub">(format!("{m:.3} / floor {:.2}", r.floor))</div>
+                                <div class="sub">(r.validated_on.chars().take(48).collect::<String>())</div>
                             </td>
                             <td class="num">(format!("{} / {} / {}", cm[0], cm[1], cm[2]))</td>
-                            <td class="num">(counts.get(rid).copied().unwrap_or(0))</td>
-                            <td><span class=(class!("pill", "ok" if pass, "warn" if !pass))>if pass { "armed" } else { "shadow" }</span></td>
+                            <td>if let Some(a) = &r.approved_by { <span class="pill ok">"approved"</span><div class="sub">(a.clone())</div> } else { <span class="pill warn">"draft"</span> }</td>
+                            <td><span class=(class!("pill", "ok" if r.armed, "warn" if !r.armed))>if r.armed { "armed" } else { "shadow" }</span></td>
                         </tr>
                     }
                 </tbody>
             </table>
         </section>
         <div class="cols">
-            <section class="card">
-                <h3>"Evidence ledger" <small>"SHA-256 over compact JSON [time, rule, who, clip, prev]"</small></h3>
-                <table class="ledger">
-                    <thead><tr><th>"#"</th><th>"t (s)"</th><th>"rule"</th><th>"who"</th><th>"clip"</th><th>"prev"</th><th>"hash"</th></tr></thead>
-                    <tbody>
-                        for (i, e) in site.ledger.entries.iter().enumerate().take(14) {
-                            <tr><td class="num">(i)</td><td class="num">(e.time.clone())</td><td><span class="chip">(e.rule.clone())</span></td>
-                                <td>(e.who.clone())</td><td>(e.clip.clone())</td>
-                                <td><code>(e.prev[..10].to_string())</code></td><td><code>(e.hash[..10].to_string())</code></td></tr>
-                        }
-                    </tbody>
-                </table>
-                <div class="sub">"showing 14 of " (site.ledger.entries.len()) " · full chain at " <code>"/v1/ledger"</code></div>
+            <section class="card embed">
+                <h3>"Rule Studio" <small>"MCC gates, formal logic and the evidence chain — live from this site"</small></h3>
+                <iframe src="/rulestudio/index.html" title="VG360 Rule Studio" loading="lazy"></iframe>
             </section>
-            <aside class=(class!("card", "verify", "ok" if ok, "bad" if !ok))>
-                <h3>"Python → Rust interop"</h3>
-                <p class="big">if ok { "✓ chain intact" } else { "✗ chain broken" }</p>
-                <p>(vtxt)</p>
-                <p class="note">"The ledger was written by the Python notebook (hashlib, json.dumps with compact separators). This page re-hashes every entry in Rust (sha2 + serde_json) on load. The same check runs as a golden test: "<code>"cargo test -p vg360-geom --test golden"</code>"."</p>
-                if site.rules.values().any(|r| r.pri.is_none()) {
-                    <p class="note warnline">"Export finding: rule " <code>"edge"</code> " has no priority tier in the notebook export, so it falls back to the 0.80 floor. Fix in Rule Studio before go-live."</p>
-                }
+            <aside class="stack">
+                <section class=(class!("card", "verify", "ok" if vesdb.as_ref().is_some_and(|v| v.1.is_some())))>
+                    <h3>"Evidence log" <small>"vesdb · RFC 9162 Merkle log"</small></h3>
+                    if let Some((base, cp)) = &vesdb {
+                        <p class="big">if cp.is_some() { "✓ witness-cosigned" } else { "… waiting for a checkpoint" }</p>
+                        <p>(base.clone())</p>
+                        if let Some(cp) = cp { <p class="note">(format!("checkpoint size {} · {}", cp["size"], cp["origin"].as_str().unwrap_or("")))</p> }
+                    } else {
+                        <p class="big">"not connected"</p>
+                        <p class="note">"Set "<code>"VG360_VESDB_URL"</code>", "<code>"VG360_VESDB_WRITE_TOKEN"</code>" and "<code>"VG360_VESDB_AUDIT_TOKEN"</code>". Every raised alert is then written as an incident ("<code>"hazard-detected"</code>" + "<code>"alert-raised"</code>", frame SHA-256, ruleset and model hashes) with a signed receipt; bundles verify offline with "<code>"vesdb-verify"</code>"."</p>
+                    }
+                </section>
+                <section class=(class!("card", "verify", "ok" if ok, "bad" if !ok))>
+                    <h3>"Notebook ledger" <small>"Python → Rust interop"</small></h3>
+                    <p class="big">if ok { "✓ chain intact" } else { "✗ chain broken" }</p>
+                    <p>(vtxt)</p>
+                    <p class="note">"The simulated site's hash chain written by the notebook, re-verified in Rust on load."</p>
+                </section>
             </aside>
         </div>
     })
@@ -274,101 +285,39 @@ pub async fn rules(cx: &Cx) -> Result<impl View> {
 
 // ───────────────────────────── twin ─────────────────────────────
 
-fn plan_svg(site: &Site) -> String {
-    // site plan, metres → px (9 px/m, origin at the well centre, north up)
-    let s = 9.0;
-    let (w, h) = (100.0, 80.0);
-    let tx = |x: f64| (x + w / 2.0) * s + 20.0;
-    let ty = |y: f64| (h / 2.0 - y) * s + 20.0;
-    let mut o = format!(r#"<svg viewBox="0 0 {} {}" class="plan">"#, w * s + 40.0, h * s + 50.0);
-    o += &format!(r#"<rect x="20" y="20" width="{}" height="{}" class="pad"/>"#, w * s, h * s);
-    for i in 1..10 {
-        let x = 20.0 + i as f64 * 10.0 * s;
-        o += &format!(r#"<line x1="{x}" y1="20" x2="{x}" y2="{}" class="gridl"/>"#, 20.0 + h * s);
-    }
-    for i in 1..8 {
-        let y = 20.0 + i as f64 * 10.0 * s;
-        o += &format!(r#"<line x1="20" y1="{y}" x2="{}" y2="{y}" class="gridl"/>"#, 20.0 + w * s);
-    }
-    // (label, x, y = top-left corner in metres, width, height, class)
-    let kit: &[(&str, f64, f64, f64, f64, &str)] = &[
-        ("Drill floor", -8.0, 8.0, 16.0, 16.0, "rig"),
-        ("Mud tanks", 16.0, 12.0, 12.0, 22.0, "eq"),
-        ("Shakers", 9.0, 2.0, 6.0, 7.0, "eq"),
-        ("Mud pumps", -32.0, -12.0, 18.0, 10.0, "eq"),
-        ("Pipe deck / catwalk", 6.0, 32.0, 30.0, 8.0, "eq"),
-        ("Crane 1 lift zone", 20.0, -14.0, 16.0, 14.0, "lift"),
-        ("Generators", -46.0, 34.0, 12.0, 10.0, "eq"),
-        ("BOP accumulator", -40.0, 18.0, 13.0, 6.0, "eq"),
-        ("Muster point", 38.0, 38.0, 10.0, 7.0, "safe"),
-    ];
-    // coverage first, equipment and labels on top
-    for c in &site.cams {
-        let (x, y) = (tx(c.plan_xy[0]), ty(c.plan_xy[1]));
-        let cls = if c.guard == Status::Ok { "fov" } else { "fov bad" };
-        if matches!(c.lens, Lens::Fisheye) {
-            o += &format!(r#"<circle cx="{x:.0}" cy="{y:.0}" r="{:.0}" class="{cls}"/>"#, 14.0 * s);
-        } else {
-            // useful range: where a standing worker is still ≥ ~60 px tall at 1080p with 3×3 tiles
-            let r = (c.height_m * 2.2).clamp(16.0, 30.0) * s;
-            let a0 = (c.plan_dir - c.hfov_deg / 2.0).to_radians();
-            let a1 = (c.plan_dir + c.hfov_deg / 2.0).to_radians();
-            o += &format!(r#"<path d="M{x:.0},{y:.0} L{:.0},{:.0} A{r:.0},{r:.0} 0 0 1 {:.0},{:.0} Z" class="{cls}"/>"#,
-                x + r * a0.sin(), y - r * a0.cos(), x + r * a1.sin(), y - r * a1.cos());
-        }
-    }
-    for (name, x, y, ww, hh, cls) in kit {
-        o += &format!(r#"<rect x="{:.0}" y="{:.0}" width="{:.0}" height="{:.0}" class="{cls}"/><text x="{:.0}" y="{:.0}" class="lbl">{name}</text>"#,
-            tx(*x), ty(*y), ww * s, hh * s, tx(*x) + 6.0, ty(*y) + 17.0);
-    }
-    o += &format!(r#"<circle cx="{:.0}" cy="{:.0}" r="{:.0}" class="redzone"/><text x="{:.0}" y="{:.0}" class="lbl red">well · red zone r = 6 m</text>"#,
-        tx(0.0), ty(0.0), 6.0 * s, tx(-8.0), ty(-8.0) + 20.0);
-    for c in &site.cams {
-        let (x, y) = (tx(c.plan_xy[0]), ty(c.plan_xy[1]));
-        let bad = if c.guard == Status::Ok { "" } else { " bad" };
-        o += &format!(r#"<circle cx="{x:.0}" cy="{y:.0}" r="7" class="camdot{bad}"/><text x="{:.0}" y="{:.0}" class="cam">{}</text>"#, x + 11.0, y - 9.0, c.id);
-    }
-    o += &format!(r#"<text x="22" y="{:.0}" class="lbl">N ↑ · grid 10 m · wedges = useful detection range · red dashed = camera moved, coverage invalid</text>"#, h * s + 42.0);
-    o += "</svg>";
-    o
-}
-
 #[page("/twin")]
 pub async fn twin(cx: &Cx) -> Result<impl View> {
     let site = context::<Site>(cx);
-    let counts = alert_counts(site);
+    let tw = site.twin.read().unwrap().clone(); // snapshot: the lock must not be held across rendering
     Ok(view! {
         <h1>"Site twin"</h1>
-        <p class="lede">"Layout built from standard components; each camera's coverage comes from its height, pitch and lens. Import or export the layout as Rig Twin JSON; the rules each camera runs are derived from the zones it can see."</p>
-        <div class="cols wide">
-            <section class="card">(Trusted(plan_svg(site)))</section>
-            <aside class="stack">
-                <section class="card">
-                    <h3>"Coverage → analytics"</h3>
-                    <table class="mini">
-                        <thead><tr><th>"Camera"</th><th>"Area"</th><th>"Rules"</th></tr></thead>
-                        <tbody>
-                            for c in &site.cams {
-                                <tr><td><a href=(href!(camera, id: c.id))>(c.id)</a></td><td>(c.area)</td>
-                                    <td>for r in c.rules { <span class="chip">(*r)</span> }</td></tr>
-                            }
-                        </tbody>
-                    </table>
-                </section>
-                <section class="card">
-                    <h3>"Alert types on this site"</h3>
-                    <table class="mini">
-                        <thead><tr><th>"Rule"</th><th>"Name"</th><th>"Count"</th></tr></thead>
-                        <tbody>
-                            for (rid, n) in &counts {
-                                <tr><td><span class="chip">(rid.clone())</span></td><td>(site.rule_name(rid))</td><td class="num">(*n)</td></tr>
-                            }
-                        </tbody>
-                    </table>
-                    <div class="btns"><button disabled=(true)>"Import Rig Twin JSON"</button><button disabled=(true)>"Export analytics config"</button></div>
-                </section>
-            </aside>
-        </div>
+        <p class="lede">"Build the rig from standard components, place cameras and see their coverage and expected alerts. "<b>"Apply to site"</b>" sends the twin to the console: every camera becomes a calibrated camera model for its worker (heading converted to a compass bearing, focal length from FOV and resolution, height above the deck it watches) and is recorded as a "<code>"calibration-set"</code>" event in the evidence log."</p>
+        <section class="card embed tall">
+            <iframe src="/twin/index.html" title="VG360 Rig Twin" loading="lazy"></iframe>
+        </section>
+        if let Some(t) = tw.as_ref() {
+            <section class="card">
+                <h3>"Applied to site" <small>(format!("{} · {} · {} cameras · {} zones · {} rule switches on", t.source, t.applied_at, t.cameras.len(), t.zones, t.rules_on))</small></h3>
+                <table class="mini">
+                    <thead><tr><th>"Camera"</th><th>"Position (m)"</th><th>"Height above deck"</th><th>"Compass yaw"</th><th>"Pitch"</th><th>"Focal length"</th><th>"Resolution"</th><th>"Check vs twin"</th></tr></thead>
+                    <tbody>
+                        for c in &t.cameras {
+                            let rms = c.rms_px();
+                            <tr><td><b>(c.id.clone())</b></td>
+                                <td class="num">(format!("{:.0}, {:.0}", c.camera.x0, c.camera.y0))</td>
+                                <td class="num">(format!("{:.1} m", c.camera.height_m)) if c.surf > 0.0 { <span class="sub">(format!(" (deck at {:.0} m)", c.surf))</span> }</td>
+                                <td class="num">(format!("{:.0}°", c.camera.yaw_deg))</td>
+                                <td class="num">(format!("{:.0}°", c.camera.pitch_deg))</td>
+                                <td class="num">(format!("{:.0} px", c.camera.f_px))</td>
+                                <td class="num">(format!("{}×{}", c.width, c.height))</td>
+                                <td>if let Some(r) = rms { <span class=(class!("pill", "ok" if r < 1.0, "warn" if r >= 1.0))>(format!("{r:.2} px · {} pts", c.points.len()))</span> } else { <span class="sub">"no deck points in view"</span> }</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <p class="note">"“Check vs twin” projects the twin's calibration points through the runtime camera model and compares them with the pixels the twin itself predicts (the twin rounds to whole pixels)."</p>
+            </section>
+        }
     })
 }
 

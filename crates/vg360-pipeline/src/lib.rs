@@ -1,5 +1,10 @@
 //! One camera, end to end: camera guard → (shift compensation) → person detection → scene
-//! (deck geometry, tracks, zones, falls) → Rule Studio rules → evidence ledger.
+//! (deck geometry, tracks, zones, falls) → IOGP rules (iogp-runtime, rules approved in iogp-editor)
+//! → tamper-evident evidence in vesdb.
+//!
+//! **Alarms.** A rule raises an alarm only when it is *armed*: approved in iogp-editor (four-eyes
+//! sign-off) **and** its validated MCC clears the floor for its severity. Any other rule runs in shadow
+//! mode — evaluated and recorded as evidence with `armed: false`, never sounded.
 //!
 //! **Shift compensation.** The guard measures the homography H from the reference view (the one the
 //! deck calibration was made on) to the live view. When the camera has been knocked by a small amount,
@@ -8,7 +13,8 @@
 //! the camera to be put back. Only when the move is too large to trust, or the view is blocked / lost,
 //! do analytics pause ([`Mode::Paused`]). This is the composition "ground ∘ H⁻¹" of
 //! `vg360_geom::camera::Camera::ground_through`, applied to whole boxes.
-use std::sync::mpsc;
+use std::collections::BTreeSet;
+use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -19,7 +25,9 @@ use vg360_guard::grabber::Grabber;
 use vg360_guard::policy::{Guard, Observation, Pose, Status, is_aligned};
 use vg360_infer::ppe::Ppe;
 use vg360_infer::yolox::{Det, Yolox};
-use vg360_scene::rules::{Alert, Ctx, RuleEngine, State};
+use serde_json::json;
+use vg360_evidence::{Vesdb, sha256_hex};
+use vg360_rules::{AlertEvent, Deployed, Engine, Person, Signals, SiteMap, track_of};
 use vg360_scene::scene::{Rec, Scene};
 use vg360_vision::img::Bgr;
 use vg360_vision::robust::{self, invert, mul};
@@ -73,9 +81,47 @@ pub struct FrameResult {
     pub boxes: Vec<Det>,
     pub recs: Vec<Option<Rec>>,
     pub helmet: Vec<Option<f64>>,
-    pub alerts: Vec<Alert>,
+    pub alerts: Vec<Alarm>,
     pub ms: f64,
 }
+
+/// One raised or cleared rule alert, with whether it sounds and where its evidence went.
+#[derive(Clone, Debug, Serialize)]
+pub struct Alarm {
+    pub event: AlertEvent,
+    /// track id behind the alert subject
+    pub track: String,
+    /// approved in iogp-editor and MCC ≥ floor: the alarm sounds; otherwise shadow mode
+    pub armed: bool,
+    pub mode: Mode,
+    /// vesdb event ids of the incident (hazard-detected, alert-raised), or "spooled"
+    pub evidence: Vec<String>,
+}
+
+/// Rules and their provenance, shared by every camera worker on the site.
+pub struct RuleSet {
+    pub deployed: Deployed,
+    pub site: SiteMap,
+    /// rule ids that may sound (approved and validated); the rest run in shadow mode
+    pub armed: BTreeSet<String>,
+}
+
+impl RuleSet {
+    /// `validation`: config/vg360_rules.validation.json-style `{rules: {ID: {mcc, floor}}}`.
+    pub fn new(deployed: Deployed, mut site: SiteMap, validation: Option<&serde_json::Value>) -> Self {
+        if let Some(m) = deployed.near_m { site.near_default_m = m; }
+        let armed = deployed.ids().into_iter().filter(|id| {
+            let v = validation.map(|v| &v["rules"][id]);
+            let ok = v.is_some_and(|v| v["mcc"].as_f64().zip(v["floor"].as_f64()).is_some_and(|(m, f)| m >= f));
+            deployed.approved(id) && ok
+        }).collect();
+        Self { deployed, site, armed }
+    }
+}
+
+/// Hashes of what produced a decision, written with every incident.
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct Provenance { pub model_sha256: String, pub ppe_model_sha256: Option<String>, pub calibration_sha256: String }
 
 /// Analytics mode for one guard measurement: aligned, small enough to compensate, or paused.
 pub fn compensation_mode(m: &Measure, l: &CompLimits) -> Mode {
@@ -95,8 +141,12 @@ pub struct CameraWorker {
     det: Yolox,
     ppe: Option<Ppe>,
     pub scene: Scene,
-    pub rules: RuleEngine,
+    pub rules: Arc<RuleSet>,
+    engine: Engine,
+    evidence: Option<Arc<Vesdb>>,
+    pub provenance: Provenance,
     frame_no: usize,
+    last_reported: Option<(Status, Mode)>,
     last: Option<Measure>,
     mode: Mode,
     /// live → reference, full-resolution pixels
@@ -106,9 +156,40 @@ pub struct CameraWorker {
 const I3: M3 = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
 
 impl CameraWorker {
-    pub fn new(id: &str, det: Yolox, ppe: Option<Ppe>, scene: Scene, rules: RuleEngine, cfg: WorkerCfg) -> Self {
-        Self { id: id.into(), cfg, aligner: Aligner::new(), guard: Guard::default(), det, ppe, scene, rules,
-               frame_no: 0, last: None, mode: Mode::Aligned, cur_to_ref: I3 }
+    pub fn new(id: &str, det: Yolox, ppe: Option<Ppe>, scene: Scene, rules: Arc<RuleSet>, cfg: WorkerCfg) -> Self {
+        let engine = rules.deployed.engine();
+        Self { id: id.into(), cfg, aligner: Aligner::new(), guard: Guard::default(), det, ppe, scene, rules, engine,
+               evidence: None, provenance: Provenance::default(), frame_no: 0, last_reported: None, last: None, mode: Mode::Aligned, cur_to_ref: I3 }
+    }
+
+    /// Write incidents and camera-guard changes to vesdb.
+    pub fn with_evidence(mut self, v: Arc<Vesdb>, provenance: Provenance) -> Self { self.evidence = Some(v); self.provenance = provenance; self }
+
+    fn record_guard(&mut self, t: f64) {
+        let now = (self.guard.status, self.mode);
+        if self.last_reported == Some(now) { return; }
+        self.last_reported = Some(now);
+        if let Some(v) = &self.evidence {
+            let pose = self.last.as_ref().filter(|m| m.ok).map(|m| m.pose);
+            let _ = v.camera_event(&self.id, "camera-guard-changed", json!({ "t": t, "status": now.0, "analytics": now.1, "pose": pose,
+                "inliers": self.last.as_ref().map(|m| m.inliers) }));
+        }
+    }
+
+    fn record_incident(&self, e: &AlertEvent, rec: Option<&Rec>, armed: bool, frame_sha256: &str) -> Vec<String> {
+        let Some(v) = &self.evidence else { return vec![] };
+        let id = format!("{}-{}-{}-{}", self.id, e.rule, track_of(&e.subject).replace('/', "_"), (e.t * 1000.0).round() as i64);
+        let hazard = json!({ "camera": self.id, "rule": e.rule, "subject": e.subject, "t": e.t,
+            "box": rec.map(|r| r.bbox), "foot_m": rec.map(|r| r.foot), "head_z_m": rec.map(|r| r.head_z), "tilt_deg": rec.map(|r| r.tilt),
+            "analytics": self.mode, "guard": self.guard.status, "frame_sha256": frame_sha256 });
+        let alert = json!({ "rule": e.rule, "alert": e.alert, "lsr": e.lsr, "severity": e.severity, "proof": e.proof, "armed": armed,
+            "ruleset_sha256": self.rules.deployed.sha256, "model_sha256": self.provenance.model_sha256,
+            "ppe_model_sha256": self.provenance.ppe_model_sha256, "calibration_sha256": self.provenance.calibration_sha256 });
+        match v.incident(&id, hazard, alert) {
+            Ok(vg360_evidence::Outcome::Written(evs)) => evs.into_iter().map(|e| e.id).collect(),
+            Ok(vg360_evidence::Outcome::Spooled) => vec!["spooled".into()],
+            Err(err) => vec![format!("error: {err}")],
+        }
     }
 
     /// Capture the reference view (the view the deck calibration belongs to). `extra` frames from the
@@ -140,7 +221,7 @@ impl CameraWorker {
     pub fn mode(&self) -> Mode { self.mode }
 
     /// Process one live frame at time `t` (seconds) with the site context (crane load, pipe handling …).
-    pub fn process(&mut self, frame: &Bgr, t: f64, dt: f64, ctx: &Ctx) -> Result<FrameResult, Error> {
+    pub fn process(&mut self, frame: &Bgr, t: f64, _dt: f64, sig: &Signals) -> Result<FrameResult, Error> {
         let t0 = Instant::now();
         if self.frame_no % self.cfg.guard_every.max(1) == 0 {
             let m = self.aligner.measure(frame);
@@ -154,6 +235,7 @@ impl CameraWorker {
             };
             if self.mode == Mode::Compensated { self.cur_to_ref = h; } else if self.mode == Mode::Aligned { self.cur_to_ref = I3; }
             self.last = Some(m);
+            self.record_guard(t);
         }
         self.frame_no += 1;
         let (pose, inliers, ref_box) = self.last.as_ref().map_or((None, 0, None), |m| (m.ok.then_some(m.pose), m.inliers, m.ok.then_some(m.boxq)));
@@ -165,13 +247,18 @@ impl CameraWorker {
             let helmet = match &self.ppe { Some(p) => p.classify(&gray, &boxes)?, None => vec![None; boxes.len()] };
             let mapped: Vec<[f64; 4]> = boxes.iter().map(|d| self.to_reference(d)).collect();
             let recs = self.scene.analyse(&mapped, t);
-            let clip = format!("{}-{}", self.id, (t * 1000.0).round() as i64);
-            for (r, h) in recs.iter().zip(&helmet) {
-                let Some(r) = r else { continue };
-                let s = State { clear: r.zones.clone(), down: r.state.down, p_helmet: *h };
-                for a in self.rules.step(&r.track.to_string(), &s, ctx, t, dt, &clip) {
-                    self.scene.log_rule(t, &a.rule, &a.subject);
-                    res.alerts.push(a);
+            let people: Vec<Person> = recs.iter().zip(&helmet).filter_map(|(r, h)| r.as_ref().map(|r|
+                Person { id: r.track.to_string(), clear: &r.zones, down: r.state.down, p_helmet: *h })).collect();
+            let events = vg360_rules::step(&mut self.engine, &self.rules.site, t, Some(&self.id), sig, &people);
+            if !events.is_empty() {
+                let frame_sha256 = sha256_hex(&frame.data);
+                for e in events {
+                    let track = track_of(&e.subject).to_string();
+                    let armed = self.rules.armed.contains(&e.rule);
+                    let rec = recs.iter().flatten().find(|r| r.track.to_string() == track);
+                    let evidence = if e.kind == "raised" { self.record_incident(&e, rec, armed, &frame_sha256) } else { vec![] };
+                    if e.kind == "raised" { self.scene.log_rule(t, &e.rule, &track); }
+                    res.alerts.push(Alarm { event: e, track, armed, mode: self.mode, evidence });
                 }
             }
             res.boxes = boxes;
@@ -187,7 +274,7 @@ impl CameraWorker {
 /// The first `ref_frames` frames become the reference view. Results arrive on the returned channel;
 /// dropping the receiver stops the worker.
 pub fn spawn_stream(mut w: CameraWorker, url: String, width: usize, height: usize, fps: f64, ref_frames: usize,
-                    ctx: impl Fn(f64) -> Ctx + Send + 'static) -> mpsc::Receiver<Result<FrameResult, String>> {
+                    signals: impl Fn(f64) -> Signals + Send + 'static) -> mpsc::Receiver<Result<FrameResult, String>> {
     let (tx, rx) = mpsc::sync_channel(8);
     thread::spawn(move || {
         let g = Grabber::start(&url, width, height, false);
@@ -208,7 +295,7 @@ pub fn spawn_stream(mut w: CameraWorker, url: String, width: usize, height: usiz
         let start = Instant::now();
         while let Some(f) = next(&mut seen) {
             let t = start.elapsed().as_secs_f64();
-            if tx.send(w.process(&f, t, dt, &ctx(t)).map_err(|e| e.to_string())).is_err() { break; }
+            if tx.send(w.process(&f, t, dt, &signals(t)).map_err(|e| e.to_string())).is_err() { break; }
         }
         g.stop();
     });

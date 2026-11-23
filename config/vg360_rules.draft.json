@@ -1,0 +1,387 @@
+{
+  "agent": "VisionGuard",
+  "requires": {
+    "detectors": [
+      "below_footprint",
+      "fall_pose",
+      "hardhat",
+      "inside_polygon",
+      "person",
+      "ppe_association",
+      "suspended_load",
+      "within_distance"
+    ],
+    "signals": [
+      "pipe-handling (drilling control system)"
+    ],
+    "zones": [
+      "exclusion-zone",
+      "height-zone",
+      "walkway"
+    ]
+  },
+  "rules": [
+    {
+      "alert": {
+        "severity": "critical",
+        "subject": "W",
+        "type": "line-of-fire-alert"
+      },
+      "ape_tptp": "fof(f1, axiom, (\n! [A,B,C,D] : (((worker(A)) &\n(('suspended-load'(B)) &\n((object(C,second,countable,na,geq,3)) &\n((predicate1(D,be,A)) &\n((modifier_pp(D,for,C)) &\n(modifier_pp(D,under,B)))))))\n=> (? [E,F] : (('line-of-fire-alert'(E)) &\n((property1(E,critical,pos)) &\n((predicate2(F,raise,'VisionGuard',E)) &\n(modifier_pp(F,for,A))))))))).",
+      "conditions": [
+        {
+          "detector": "below_footprint",
+          "min_seconds": 3.0,
+          "negated": false,
+          "object": "S2",
+          "relation": "under",
+          "subject": "W",
+          "type": "spatial"
+        }
+      ],
+      "entities": [
+        {
+          "detector": "person",
+          "human": true,
+          "kind": "class",
+          "min_count": null,
+          "noun": "worker",
+          "scope": "outer",
+          "var": "W"
+        },
+        {
+          "detector": "suspended_load",
+          "human": false,
+          "kind": "class",
+          "min_count": null,
+          "noun": "suspended-load",
+          "scope": "inner",
+          "var": "S2"
+        }
+      ],
+      "fol": "fof(lsr6_lift, axiom,\n  ! [T, W] :\n    ( ( person(W)\n        & ! [S] : (within(S, T, 3) => ? [S2] : (suspended_load(S2) & under(W, S2, S))) )\n      => alert(line_of_fire, critical, W, T) )).",
+      "id": "LIFT",
+      "lsr": {
+        "id": 6,
+        "name": "Line of Fire"
+      },
+      "paraphrase": "If a worker X1 is for at least 3 seconds under a suspended-load then VisionGuard raises a critical line-of-fire-alert for the worker X1.",
+      "readback": [
+        "VisionGuard raises a critical Line of Fire alert (IOGP Life-Saving Rule 6) about the worker when:",
+        "the worker is under a suspended-load for at least 3 seconds"
+      ],
+      "requires": {
+        "detectors": [
+          "below_footprint",
+          "person",
+          "suspended_load"
+        ],
+        "signals": [],
+        "zones": []
+      },
+      "text": "If a worker is under a suspended-load for at least 3 seconds then VisionGuard raises a critical line-of-fire-alert for the worker.",
+      "warnings": []
+    },
+    {
+      "alert": {
+        "severity": "critical",
+        "subject": "W",
+        "type": "line-of-fire-alert"
+      },
+      "ape_tptp": "fof(f1, axiom, (\n! [A,B,C,D] : (((worker(A)) &\n((predicate1(B,be,A)) &\n((modifier_pp(B,in,'Red-Zone')) &\n(('pipe-handling'(C)) &\n(predicate2(D,have,'Red-Zone',C))))))\n=> (? [E,F] : (('line-of-fire-alert'(E)) &\n((property1(E,critical,pos)) &\n((predicate2(F,raise,'VisionGuard',E)) &\n(modifier_pp(F,for,A))))))))).",
+      "conditions": [
+        {
+          "detector": "inside_polygon",
+          "min_seconds": null,
+          "negated": false,
+          "object": "Z",
+          "relation": "in",
+          "subject": "W",
+          "type": "spatial"
+        },
+        {
+          "min_seconds": null,
+          "negated": false,
+          "object": "R",
+          "relation": "have",
+          "source": "drilling control system",
+          "subject": "Z",
+          "type": "signal"
+        }
+      ],
+      "entities": [
+        {
+          "detector": "person",
+          "human": true,
+          "kind": "class",
+          "min_count": null,
+          "noun": "worker",
+          "scope": "outer",
+          "var": "W"
+        },
+        {
+          "kind": "signal",
+          "min_count": null,
+          "noun": "pipe-handling",
+          "scope": "outer",
+          "source": "drilling control system",
+          "var": "R"
+        },
+        {
+          "instance": "Red-Zone",
+          "kind": "zone",
+          "min_count": null,
+          "noun": "exclusion-zone",
+          "scope": "outer",
+          "var": "Z"
+        }
+      ],
+      "fol": "fof(lsr6_red, axiom,\n  ! [T, W, R, Z] :\n    ( ( person(W)\n        & pipe_handling(R)\n        & exclusion_zone(Z) & zone_id(Z, 'Red-Zone')\n        & in(W, Z, T)\n        & have(Z, R, T) )\n      => alert(line_of_fire, critical, W, T) )).",
+      "id": "RED",
+      "lsr": {
+        "id": 6,
+        "name": "Line of Fire"
+      },
+      "paraphrase": "If a worker X1 is in Red-Zone and Red-Zone has a pipe-handling then VisionGuard raises a critical line-of-fire-alert for the worker X1.",
+      "readback": [
+        "VisionGuard raises a critical Line of Fire alert (IOGP Life-Saving Rule 6) about the worker when:",
+        "the worker is in Red-Zone",
+        "Red-Zone has a pipe-handling (from the drilling control system)"
+      ],
+      "requires": {
+        "detectors": [
+          "inside_polygon",
+          "person"
+        ],
+        "signals": [
+          "pipe-handling (drilling control system)"
+        ],
+        "zones": [
+          "exclusion-zone"
+        ]
+      },
+      "text": "If a worker is in Red-Zone and Red-Zone has a pipe-handling then VisionGuard raises a critical line-of-fire-alert for the worker.",
+      "warnings": []
+    },
+    {
+      "alert": {
+        "severity": "critical",
+        "subject": "W",
+        "type": "working-at-height-alert"
+      },
+      "ape_tptp": "fof(f1, axiom, (\n! [A,B] : (((worker(A)) &\n((predicate1(B,be,A)) &\n(modifier_pp(B,near,'Deck-Edge'))))\n=> (? [C,D] : (('working-at-height-alert'(C)) &\n((property1(C,critical,pos)) &\n((predicate2(D,raise,'VisionGuard',C)) &\n(modifier_pp(D,for,A))))))))).",
+      "conditions": [
+        {
+          "detector": "within_distance",
+          "metres": 1.0,
+          "min_seconds": null,
+          "negated": false,
+          "object": "Z",
+          "relation": "near",
+          "subject": "W",
+          "type": "spatial"
+        }
+      ],
+      "entities": [
+        {
+          "detector": "person",
+          "human": true,
+          "kind": "class",
+          "min_count": null,
+          "noun": "worker",
+          "scope": "outer",
+          "var": "W"
+        },
+        {
+          "instance": "Deck-Edge",
+          "kind": "zone",
+          "min_count": null,
+          "noun": "height-zone",
+          "scope": "outer",
+          "var": "Z"
+        }
+      ],
+      "fol": "fof(lsr9_edge, axiom,\n  ! [T, W, Z] :\n    ( ( person(W)\n        & height_zone(Z) & zone_id(Z, 'Deck-Edge')\n        & near(W, Z, T) )\n      => alert(working_at_height, critical, W, T) )).",
+      "id": "EDGE",
+      "lsr": {
+        "id": 9,
+        "name": "Working at Height"
+      },
+      "paraphrase": "If a worker X1 is near Deck-Edge then VisionGuard raises a critical working-at-height-alert for the worker X1.",
+      "readback": [
+        "VisionGuard raises a critical Working at Height alert (IOGP Life-Saving Rule 9) about the worker when:",
+        "the worker is near Deck-Edge (within 1 m)"
+      ],
+      "requires": {
+        "detectors": [
+          "person",
+          "within_distance"
+        ],
+        "signals": [],
+        "zones": [
+          "height-zone"
+        ]
+      },
+      "text": "If a worker is near Deck-Edge then VisionGuard raises a critical working-at-height-alert for the worker.",
+      "warnings": []
+    },
+    {
+      "alert": {
+        "severity": "high",
+        "subject": "W",
+        "type": "person-down-alert"
+      },
+      "ape_tptp": "fof(f1, axiom, (\n! [A,B,C] : ((('fallen-person'(A)) &\n((object(B,second,countable,na,geq,2)) &\n((predicate1(C,be,A)) &\n((modifier_pp(C,for,B)) &\n(modifier_pp(C,in,'Deck'))))))\n=> (? [D,E] : (('person-down-alert'(D)) &\n((property1(D,high,pos)) &\n((predicate2(E,raise,'VisionGuard',D)) &\n(modifier_pp(E,for,A))))))))).",
+      "conditions": [
+        {
+          "detector": "inside_polygon",
+          "min_seconds": 2.0,
+          "negated": false,
+          "object": "Z",
+          "relation": "in",
+          "subject": "W",
+          "type": "spatial"
+        }
+      ],
+      "entities": [
+        {
+          "detector": "fall_pose",
+          "human": true,
+          "kind": "class",
+          "min_count": null,
+          "noun": "fallen-person",
+          "scope": "outer",
+          "var": "W"
+        },
+        {
+          "instance": "Deck",
+          "kind": "zone",
+          "min_count": null,
+          "noun": "walkway",
+          "scope": "outer",
+          "var": "Z"
+        }
+      ],
+      "fol": "fof(lsr0_fall, axiom,\n  ! [T, W, Z] :\n    ( ( fall_pose(W)\n        & walkway(Z) & zone_id(Z, 'Deck')\n        & ! [S] : (within(S, T, 2) => in(W, Z, S)) )\n      => alert(person_down, high, W, T) )).",
+      "id": "FALL",
+      "lsr": {
+        "id": 0,
+        "name": "Slip, trip or person down"
+      },
+      "paraphrase": "If a fallen-person X1 is for at least 2 seconds in Deck then VisionGuard raises a high person-down-alert for the fallen-person X1.",
+      "readback": [
+        "VisionGuard raises a high Slip, trip or person down alert (IOGP Life-Saving Rule 0) about the fallen-person when:",
+        "the fallen-person is in Deck for at least 2 seconds"
+      ],
+      "requires": {
+        "detectors": [
+          "fall_pose",
+          "inside_polygon"
+        ],
+        "signals": [],
+        "zones": [
+          "walkway"
+        ]
+      },
+      "text": "If a fallen-person is in Deck for at least 2 seconds then VisionGuard raises a high person-down-alert for the fallen-person.",
+      "warnings": []
+    },
+    {
+      "alert": {
+        "severity": "critical",
+        "subject": "W",
+        "type": "ppe-alert"
+      },
+      "ape_tptp": "fof(f1, axiom, (\n! [A,B] : (((worker(A)) &\n((predicate1(B,be,A)) &\n((modifier_pp(B,in,'Deck')) &\n(~(? [C,D,E] : ((helmet(C)) &\n((object(D,second,countable,na,geq,2)) &\n((predicate2(E,wear,A,C)) &\n(modifier_pp(E,for,D))))))))))\n=> (? [F,G] : (('ppe-alert'(F)) &\n((property1(F,critical,pos)) &\n((predicate2(G,raise,'VisionGuard',F)) &\n(modifier_pp(G,for,A))))))))).",
+      "conditions": [
+        {
+          "detector": "inside_polygon",
+          "min_seconds": null,
+          "negated": false,
+          "object": "Z",
+          "relation": "in",
+          "subject": "W",
+          "type": "spatial"
+        },
+        {
+          "detector": "ppe_association",
+          "min_seconds": 2.0,
+          "negated": true,
+          "object": "H",
+          "relation": "wear",
+          "subject": "W",
+          "type": "association"
+        }
+      ],
+      "entities": [
+        {
+          "detector": "person",
+          "human": true,
+          "kind": "class",
+          "min_count": null,
+          "noun": "worker",
+          "scope": "outer",
+          "var": "W"
+        },
+        {
+          "instance": "Deck",
+          "kind": "zone",
+          "min_count": null,
+          "noun": "walkway",
+          "scope": "outer",
+          "var": "Z"
+        },
+        {
+          "detector": "hardhat",
+          "human": false,
+          "kind": "class",
+          "min_count": null,
+          "noun": "helmet",
+          "scope": "negated",
+          "var": "H"
+        }
+      ],
+      "fol": "fof(lsr0_ppe, axiom,\n  ! [T, W, Z] :\n    ( ( person(W)\n        & walkway(Z) & zone_id(Z, 'Deck')\n        & in(W, Z, T)\n        & ! [S] : (within(S, T, 2) => ~ (? [H] : (hardhat(H) & wear(W, H, S)))) )\n      => alert(ppe, critical, W, T) )).",
+      "id": "PPE",
+      "lsr": {
+        "id": 0,
+        "name": "Missing PPE"
+      },
+      "paraphrase": "If a worker X1 is in Deck and it is false that the worker X1 wears a helmet for at least 2 seconds then VisionGuard raises a critical ppe-alert for the worker X1.",
+      "readback": [
+        "VisionGuard raises a critical Missing PPE alert (IOGP Life-Saving Rule 0) about the worker when:",
+        "the worker is in Deck",
+        "the worker is not seen wearing a helmet for at least 2 seconds"
+      ],
+      "requires": {
+        "detectors": [
+          "hardhat",
+          "inside_polygon",
+          "person",
+          "ppe_association"
+        ],
+        "signals": [],
+        "zones": [
+          "walkway"
+        ]
+      },
+      "text": "If a worker is in Deck and does not wear a helmet for at least 2 seconds then VisionGuard raises a critical ppe-alert for the worker.",
+      "warnings": []
+    }
+  ],
+  "schema": "iogp-alert-rules/v1",
+  "semantics": {
+    "alert lifecycle": "per (rule, subject): IDLE -> ACTIVE when the rule's antecedent holds (alert raised once, with proof) -> COOLING when it stops holding -> IDLE after cooldown_seconds; re-raised only from IDLE",
+    "counts": "'at least N workers' requires N distinct believed objects that satisfy every condition on them",
+    "duration": "'for at least D seconds' means the believed condition held at every frame time in [T-D, T]; 'for more than D seconds' is the same with a strict bound",
+    "evidence": "a detected fact (object, zone membership, relation) stays believed for grace_seconds after it was last observed; a fact never observed, or not observed for longer than grace_seconds, is believed absent",
+    "fol": "each rule's 'fol' is a TPTP fof formula over believed facts at time T; the head is alert(Lsr, Severity, Subject, T)",
+    "negation": "'does not wear a harness' holds when no harness is believed associated with the subject; negated visual conditions require a duration (positive-evidence policy)",
+    "time": "rules are evaluated at every frame time T",
+    "within(S, T, D)": "T - D <= S <= T"
+  },
+  "timing": {
+    "cooldown_seconds": 3.0,
+    "grace_seconds": 0.7
+  }
+}

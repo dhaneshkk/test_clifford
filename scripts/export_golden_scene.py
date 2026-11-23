@@ -45,6 +45,9 @@ def step(self, key, state, ctx, t, dt, clip="", emit_events=True):
     if self.ledger is not None:
         frames[-1].setdefault("ctx", ctx)
         rules.append({"t": t, "key": key, "fired": fired})
+    else:   # ground-truth engine: the true 3-D state of the person behind the same record
+        frames[-1].setdefault("gt", []).append({"pid": int(str(key)[2:]), "clear": {k: float(v) for k, v in state["clear"].items()},
+                                                 "down": bool(state["down"])})
     return fired
 G["RuleEngine"].step = step
 

@@ -11,7 +11,7 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 # inference-time evaluator of rules compiled by iogp-editor (dhaneshkk/test1_logpeditor)
-iogp-runtime = { git = "https://github.com/dhaneshkk/test1_logpeditor", rev = "e35bcd203c33f249282046bfeae45229cc219003" }
+iogp-runtime = { git = "https://github.com/dhaneshkk/test1_logpeditor", rev = "499cf14a79425eaabe603c3e6fc7d10944df8dd7" }
 vg360-geom = { path = "../vg360-geom" }
 
 [dev-dependencies]

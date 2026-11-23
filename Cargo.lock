@@ -1025,7 +1025,7 @@ dependencies = [
 [[package]]
 name = "iogp-runtime"
 version = "0.1.0"
-source = "git+https://github.com/dhaneshkk/test1_logpeditor?rev=e35bcd203c33f249282046bfeae45229cc219003#e35bcd203c33f249282046bfeae45229cc219003"
+source = "git+https://github.com/dhaneshkk/test1_logpeditor?rev=499cf14a79425eaabe603c3e6fc7d10944df8dd7#499cf14a79425eaabe603c3e6fc7d10944df8dd7"
 dependencies = [
  "serde",
  "serde_json",

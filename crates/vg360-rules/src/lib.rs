@@ -12,7 +12,7 @@
 //! | crane load suspended (load cell) | object `Load-1` class `suspended_load` |
 //! | inside the load's drop volume | fact `under(7, Load-1)` |
 //! | pipe handling active (drilling control system) | signal `Pipe-Handling`; `have(Red-Zone, Pipe-Handling)` |
-//! | fall pose held | object `7/down` class `fall_pose`, `in(7/down, Deck)` |
+//! | fall pose held | object `7` also class `fall_pose` |
 //! | hard hat seen (P ≥ 0.5) or not classifiable | object `7/hardhat`, fact `wear(7, 7/hardhat)` |
 //!
 //! PPE follows the previous engine: only a confident "no hard hat" (P < 0.5) counts as not wearing;
@@ -93,13 +93,9 @@ pub fn step(eng: &mut Engine, site: &SiteMap, t: f64, camera: Option<&str>, sig:
     for p in people {
         eng.object(&p.id, Kind::Class, "person", None);
         if let Some(w) = &site.walkway { eng.fact("in", &p.id, w); }
-        if p.down {
-            // the fall pose is its own object ("7/down"): iogp-runtime smooths an object's primary type
-            // over missed frames but not a second type given to the same id
-            let did = down_id(&p.id);
-            eng.object(&did, Kind::Class, "fall_pose", None);
-            if let Some(w) = &site.walkway { eng.fact("in", &did, w); }
-        }
+        // the fall pose is a second type of the same track: iogp-runtime keeps every type believed over
+        // missed frames (dhaneshkk/test1_logpeditor#1), so the alert's subject is the track id itself
+        if p.down { eng.object(&p.id, Kind::Class, "fall_pose", None); }
         let clear = |name: &str| p.clear.iter().find(|(z, _)| z == name).map(|c| c.1);
         for z in &site.zones {
             let Some(c) = clear(&z.scene_zone) else { continue };
@@ -118,8 +114,7 @@ pub fn step(eng: &mut Engine, site: &SiteMap, t: f64, camera: Option<&str>, sig:
     eng.end_events()
 }
 
-/// Object id of a person's fall pose; [`track_of`] maps an alert subject back to the track.
-pub fn down_id(track: &str) -> String { format!("{track}/down") }
+/// Track id behind an alert subject (subjects are track ids; anything after '/' is ignored).
 pub fn track_of(subject: &str) -> &str { subject.split('/').next().unwrap_or(subject) }
 
 fn signal_id(s: &str) -> String {

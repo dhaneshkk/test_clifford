@@ -157,6 +157,6 @@ the IOGP rules with approval and MCC gates and embeds Rule Studio, fed live from
 at the pinned commit. The plan is to dual-license it; until that lands there, binaries that link it
 carry LGPL relinking obligations.
 
-**Found while integrating (for test1_logpeditor):** iogp-runtime smooths an object's *first* type over
-missed frames but not a second type given to the same id — a person who is also `fall_pose` lost the fall
-timer on every missed frame. The adapter gives the fall pose its own object (`7/down`).
+**Fixed upstream:** iogp-runtime used to keep only an object's first type believed over missed frames, so a
+track that is also `fall_pose` lost its fall timer on every miss. Fixed in dhaneshkk/test1_logpeditor#1;
+this workspace pins that commit, and the fall pose is again a second type of the track.

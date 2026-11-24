@@ -64,6 +64,12 @@ holds the applied Rig Twin and the alert snapshots.
 
 ## 2. The console
 
+The screenshots in this guide come from demo mode (`VG360_DEMO=1 VG360_DEMO_FISHEYE=1`). The camera
+cards use the notebook's simulated rig, so no real site imagery is shown.
+
+![Overview: camera cards, guard alarm banner, alert feed and rule status](images/overview.jpg)
+*Overview: camera cards, the camera-guard alarm banner (CAM-05 has been knocked), the hash-chained alert feed and rule status.*
+
 | Page | What it is for |
 |---|---|
 | **Overview** `/` | Camera cards, camera-guard alarms, alert feed, rule status. A green banner links to the live console while streams are running. |
@@ -72,12 +78,15 @@ holds the applied Rig Twin and the alert snapshots.
 | **Rules & evidence** `/rules` | IOGP rules with approval state, MCC against the floor, armed or shadow. Also Rule Studio and the vesdb connection. |
 | **Site twin** `/twin` | Rig Twin editor: cameras, zones and rules on the deck plan. *Apply to site* makes it the runtime configuration. |
 | **Models & training** `/training` | Model registry and the verified model cards: MCC with confidence interval, baseline, SAM settings, gate. |
-| **Settings** `/settings` | Cameras and the environment variable that carries each stream URL. |
+| **Settings** `/settings` | Cameras of the applied Rig Twin: lens and resolution, the environment variable that carries each stream URL, whether it is set, and auto-height. Also the camera-guard thresholds and the endpoints. |
 
 On `/live`:
 
 - **Box colours:** green = person; amber = inside a zone; dashed yellow = helmet probability below 0.5; red = down.
 - **Status line** under each camera: frames per second, milliseconds per frame, people in view and the analytics mode (Aligned, Compensated or Paused). It also shows the mount height in use, or *estimating mount height (rules off)* while auto-height runs.
+
+![Live: demo camera and the same scene through a 185° fisheye](images/live.jpg)
+*Live: the demo camera (top) and the same scene through a 185° fisheye (bottom), with tracks, zones and helmet probability. On the right are the site signals and the live alert feed. These alerts are shadow because the rules config is a draft.*
 
 ---
 
@@ -96,6 +105,12 @@ tilt, field of view and resolution.
    Dashes in camera ids become underscores: `CAM-05` → `VG360_CAM_CAM_05_URL`.
 3. Restart the console. A worker starts for every twin camera that has a URL. It uses that camera's
    calibration and only the twin zones the camera watches.
+
+![Site twin: Rig Twin editor with cameras, coverage and Apply to site](images/twin.jpg)
+*Site twin: the Rig Twin editor. Cameras with their coverage, components and zones on the deck plan, expected alerts per week, and **Apply to site**.*
+
+![Settings: twin cameras, stream variables, auto-height, guard thresholds](images/settings.jpg)
+*Settings: every camera of the applied twin, its lens and resolution, the variable for its stream (set or not), and whether auto-height is on. Also the camera-guard thresholds and the endpoints.*
 
 **Zones in the twin map to rules as follows:**
 
@@ -206,6 +221,14 @@ Boxes on `/live` are drawn on the fisheye image itself.
 
 Each worker compares the live view with the reference view captured at start-up, about 4 times a second.
 
+![Camera page: CAM-05 knocked, guidance and compensated analytics](images/camera.jpg)
+*Camera page for a knocked camera:*
+
+- *The dashed blue box shows where the correct view now sits, with an arrow to follow.*
+- *The guidance is to move right 5.5 %, up 2.0 % and rotate anti-clockwise 3.2°.*
+- *Analytics continue in Compensated mode.*
+- *The reference view is inset at the bottom right.*
+
 | Situation | Guard status | Analytics |
 |---|---|---|
 | View matches | POSITION CORRECT | **Aligned**: calibration used as is |
@@ -237,6 +260,14 @@ A rule **sounds** (it is *armed*) only when both of these hold:
 
 Any other rule runs in **shadow** mode. It is evaluated and logged with `armed: false`, but never sounded.
 The committed configuration is a draft, so every rule is shadow until your approvers sign it off.
+
+![Rules & evidence: IOGP rules, MCC against floor, approval and state](images/rules.jpg)
+*Rules & evidence:*
+
+- *Each rule in controlled English, with its readback and first-order logic.*
+- *Severity and MCC against the floor.*
+- *The confusion matrix (TP / FP / FN), approval and state. The draft banner explains why everything is shadow.*
+- *Rule Studio and the vesdb panel below.*
 
 **To deploy approved rules:**
 
@@ -345,6 +376,13 @@ the repository and writes its outputs where the Rust side expects them.
 - **Fine-tuned detector:** it runs only if it matches its card and was trained on real site frames. A smoke-set model needs `VG360_ALLOW_SMOKE_MODELS=1`, for testing only.
 
 `/training` shows the cards.
+
+![Models & training: model registry and the verified PPE model card](images/training.jpg)
+*Models & training:*
+
+- *The model registry, including the detector's status on real rig footage.*
+- *The PPE model card, verified by SHA-256 at start-up, with MCC and confidence interval, the plain-CNN baseline, sharpness, parity and the gate.*
+- *The notebook pipeline.*
 
 **Auditing site footage.** This runs the detector and PPE model over a clip, and saves a contact sheet,
 crops and frames for labelling into `footage_audit/`:

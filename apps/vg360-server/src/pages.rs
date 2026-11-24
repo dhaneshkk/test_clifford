@@ -443,22 +443,29 @@ pub async fn settings(cx: &Cx) -> Result<impl View> {
         ("OK_SHIFT", pct(gc::OK_SHIFT)), ("OK_ROT", format!("{}°", gc::OK_ROT)), ("MOVED_HOLD", format!("{} s", gc::MOVED_HOLD)),
         ("BLOCKED_HOLD", format!("{} s", gc::BLOCKED_HOLD)), ("LOST_HOLD", format!("{} s", gc::LOST_HOLD)), ("MIN_INLIERS", gc::MIN_INLIERS.to_string()),
     ];
+    let twin_cams: Vec<(String, String, String, bool, bool)> = site.twin.read().unwrap().as_ref().map(|t| t.cameras.iter().map(|c| {
+        let env = format!("VG360_CAM_{}_URL", c.id.replace('-', "_"));
+        let ah = std::env::var(format!("VG360_CAM_{}_AUTO_HEIGHT", c.id.replace('-', "_"))).is_ok_and(|v| v == "1");
+        (c.id.clone(), format!("{} · {}×{}", if c.lens.is_some() { "fisheye" } else { "pinhole" }, c.width, c.height), env.clone(), std::env::var(&env).is_ok(), ah)
+    }).collect()).unwrap_or_default();
     Ok(view! {
         <h1>"Settings"</h1>
         <div class="cols">
             <section class="card">
-                <h3>"Camera streams"</h3>
-                <p class="note">"Stream URLs (with credentials) are never stored in the repository or shown here. Each camera reads its RTSP URL from an environment variable or the host's secret store."</p>
+                <h3>"Camera streams" <small>"cameras of the applied Rig Twin"</small></h3>
+                <p class="note">"Stream URLs (with credentials) are never stored in the repository or shown here. A live worker starts for every twin camera whose "
+                    <code>"VG360_CAM_<ID>_URL"</code> " is set on this host; " <code>"VG360_CAM_<ID>_AUTO_HEIGHT=1"</code> " estimates its mount height from standing workers."</p>
                 <table class="mini">
-                    <thead><tr><th>"Camera"</th><th>"Environment variable"</th><th>"Set on this host"</th></tr></thead>
+                    <thead><tr><th>"Camera"</th><th>"Lens · resolution"</th><th>"Environment variable"</th><th>"Stream"</th><th>"Auto-height"</th></tr></thead>
                     <tbody>
-                        for c in &site.cams {
-                            let set = std::env::var(c.env_var()).is_ok();
-                            <tr><td>(c.id) " · " (c.name)</td><td><code>(c.env_var())</code></td>
-                                <td><span class=(class!("pill", "ok" if set, "warn" if !set))>if set { "yes" } else { "no — sample frames" }</span></td></tr>
+                        for c in &twin_cams {
+                            <tr><td>(c.0.clone())</td><td>(c.1.clone())</td><td><code>(c.2.clone())</code></td>
+                                <td><span class=(class!("pill", "ok" if c.3, "warn" if !c.3))>if c.3 { "set · live" } else { "not set" }</span></td>
+                                <td>if c.4 { <span class="pill ok">"on"</span> } else { "—" }</td></tr>
                         }
                     </tbody>
                 </table>
+                if twin_cams.is_empty() { <p class="note">"No Rig Twin applied — open Site twin and press Apply to site."</p> }
             </section>
             <aside class="card">
                 <h3>"Camera-guard thresholds" <small>"vg360-guard::config"</small></h3>
@@ -470,6 +477,9 @@ pub async fn settings(cx: &Cx) -> Result<impl View> {
                     <dt><code>"GET /v1/rules"</code></dt><dd>"rules + MCC gates"</dd>
                     <dt><code>"GET /v1/ledger"</code></dt><dd>"evidence chain + verification"</dd>
                     <dt><code>"GET /v1/cameras"</code></dt><dd>"camera + guard status"</dd>
+                    <dt><code>"GET /api/live/events"</code></dt><dd>"live frames and alerts (SSE)"</dd>
+                    <dt><code>"POST /api/signals"</code></dt><dd>"crane load, pipe handling"</dd>
+                    <dt><code>"POST /api/calibrate"</code></dt><dd>"vanishing points + people → FOV, pitch, roll, height"</dd>
                 </dl>
             </aside>
         </div>

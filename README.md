@@ -37,7 +37,7 @@ lean/            Lake project (Mathlib v4.36.0), built in CI: VG360/CGA (zone / 
 testdata/        notebook exports (rules, ledger) and frames used by the golden tests
 ```
 
-**User guide: [docs/USER_GUIDE.md](docs/USER_GUIDE.md)**
+**User guide: [docs/USER_GUIDE.md](docs/USER_GUIDE.md)** (with UI screenshots; printable copy: [docs/VisionGuard360_User_Guide.pdf](docs/VisionGuard360_User_Guide.pdf))
 
 ## Status — Phases 0–6 (pipeline) + integration (Rig Twin, Rule Studio, iogp-editor, vesdb)
 

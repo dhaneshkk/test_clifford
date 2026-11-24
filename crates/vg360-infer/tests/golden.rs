@@ -143,3 +143,59 @@ fn ppe_tract_matches_notebook_on_golden_crops() {
 fn ppe_ort_matches_notebook_on_golden_crops() {
     check_ppe(&Ppe::load_ort(format!("{}/models/ppe_clifford_folded.onnx", root()), 48).expect("set ORT_DYLIB_PATH"), 1e-4);
 }
+
+// ───────────────────────────── fine-tuned detector vs the training notebook (§10)
+// Runs when VG360_DET_FT_DIR points at the notebook's detector output (models/ for real data,
+// detector_smoke/ for the procedural smoke set — CI runs the notebook in FAST mode, then this test).
+
+#[derive(Deserialize)]
+struct DetFrame { file: String, boxes: Vec<[f64; 4]>, scores: Vec<f64> }
+#[derive(Deserialize)]
+struct DetGolden { model_sha256: String, size: usize, raw_rows: std::collections::BTreeMap<String, Vec<f32>>, frames: Vec<DetFrame> }
+
+#[cfg(feature = "tract")]
+#[test]
+fn detector_finetune_matches_notebook() {
+    let Ok(dir) = std::env::var("VG360_DET_FT_DIR") else { eprintln!("skipped: set VG360_DET_FT_DIR"); return };
+    let model = format!("{dir}/yolox_nano_ft.onnx");
+    let card = vg360_infer::card::verify(&model).expect("detector card");
+    let g: DetGolden = serde_json::from_str(&std::fs::read_to_string(format!("{dir}/golden/detector.json")).unwrap()).unwrap();
+    assert_eq!(card.sha256(), g.model_sha256);
+    let y = Yolox::load_tract(&model, g.size).unwrap();
+    // raw output on the notebook's own letterboxed tensor
+    let lb = Bgr::load(format!("{dir}/golden/letterbox0.png")).unwrap();
+    let n = g.size * g.size;
+    let mut t = vec![0f32; 3 * n];
+    for (i, p) in lb.data.chunks_exact(3).enumerate() { for c in 0..3 { t[c * n + i] = p[c] as f32; } }
+    let raw = y.raw(t).unwrap();
+    let stride = raw.len() / 3549;
+    for (k, want) in &g.raw_rows {
+        let i: usize = k.parse().unwrap();
+        for (a, b) in raw[i * stride..(i + 1) * stride].iter().zip(want) { assert!((a - b).abs() < 2e-3, "row {i}: {a} vs {b}"); }
+    }
+    // full runtime path (Rust letterbox → model → decode → NMS) on the golden frames. The model itself is
+    // checked exactly above; here the Rust letterbox differs from cv2 by ≤ 1 grey level, which can move a
+    // score by ~0.01 and so swap the NMS winner of a box near the threshold. Confident boxes (≥ conf + 0.1)
+    // must match within 1 px; borderline ones must overlap a Rust box (IoU ≥ 0.7) when Rust keeps one.
+    let mut n_boxes = 0;
+    for f in &g.frames {
+        let gray = Bgr::load(format!("{dir}/golden/{}", f.file)).unwrap().to_gray();
+        let got = y.detect(&gray).unwrap();
+        for (w, &s) in f.boxes.iter().zip(&f.scores) {
+            let want = Det { x1: w[0], y1: w[1], x2: w[2], y2: w[3], score: s, class: 0 };
+            let best = got.iter().max_by(|a, b| a.iou(&want).total_cmp(&b.iou(&want)));
+            if s >= y.conf + 0.1 {
+                let b = best.unwrap_or_else(|| panic!("{}: confident box {want:?} missing", f.file));
+                let d = [b.x1 - w[0], b.y1 - w[1], b.x2 - w[2], b.y2 - w[3]].map(f64::abs);
+                eprintln!("{}: confident box, max corner diff {:.3} px, score {:.4} vs {s:.4}", f.file, d.iter().cloned().fold(0.0, f64::max), b.score);
+                assert!(d.iter().all(|&v| v <= 1.0) && (b.score - s).abs() < 0.02, "{}: {b:?} vs {want:?}", f.file);
+            } else if let Some(b) = best.filter(|b| b.iou(&want) > 0.0) {
+                eprintln!("{}: borderline box (score {s:.3}), IoU {:.3} with Rust", f.file, b.iou(&want));
+                assert!(b.iou(&want) >= 0.7, "{}: {b:?} vs {want:?}", f.file);
+            }
+        }
+        for b in &got { assert!(b.score < y.conf + 0.1 || f.scores.iter().any(|&s| (s - b.score).abs() < 0.02), "{}: extra confident box {b:?}", f.file); }
+        n_boxes += got.len();
+    }
+    eprintln!("fine-tuned detector: card {} · {} frames, {n_boxes} boxes match the notebook", card.data_source(), g.frames.len());
+}

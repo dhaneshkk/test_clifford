@@ -118,23 +118,41 @@ fn specs(root: &str, twin: Option<&crate::state::TwinState>) -> Vec<Spec> {
     v
 }
 
+/// The person detector to run: the stock COCO model, or a fine-tuned one from the training notebook
+/// (`VG360_DETECTOR=models/yolox_nano_ft.onnx`), which must match its card and must have been trained on real
+/// site frames (`VG360_ALLOW_SMOKE_MODELS=1` overrides that for testing a smoke-set model).
+pub fn detector(root: &str) -> (String, Result<Option<vg360_infer::card::Card>, String>) {
+    match std::env::var("VG360_DETECTOR") {
+        Err(_) => (format!("{root}/../../models/yolox_nano.onnx"), Ok(None)),
+        Ok(p) => {
+            let c = vg360_infer::card::verify(&p).and_then(|c| {
+                if c.real_data() || std::env::var("VG360_ALLOW_SMOKE_MODELS").is_ok_and(|v| v == "1") { Ok(Some(c)) }
+                else { Err(format!("{p} was trained on {} — not served (VG360_ALLOW_SMOKE_MODELS=1 to test it)", c.data_source())) }
+            });
+            (p, c)
+        }
+    }
+}
+
 fn load_detector(root: &str) -> Result<(Yolox, Option<Ppe>, Provenance), String> {
     let m = |f: &str| format!("{root}/../../models/{f}");
+    let (det_path, det_card) = detector(root);
+    det_card?;
     let sha = |p: &str| std::fs::read(p).map(|b| vg360_evidence::sha256_hex(&b)).unwrap_or_default();
     #[cfg(feature = "ort")]
     let (det, ppe) = {
         let n = std::thread::available_parallelism().map_or(1, |n| n.get());
-        (Yolox::load_ort(m("yolox_nano.onnx"), 416, n).map_err(|e| e.to_string())?, Ppe::load_ort(m("ppe_clifford_folded.onnx"), 48).ok())
+        (Yolox::load_ort(&det_path, 416, n).map_err(|e| e.to_string())?, Ppe::load_ort(m("ppe_clifford_folded.onnx"), 48).ok())
     };
     #[cfg(not(feature = "ort"))]
-    let (det, ppe) = (Yolox::load_tract(m("yolox_nano.onnx"), 416).map_err(|e| format!("{e} (run scripts/fetch_models.sh)"))?,
+    let (det, ppe) = (Yolox::load_tract(&det_path, 416).map_err(|e| format!("{e} (run scripts/fetch_models.sh)"))?,
                       Ppe::load_tract(m("ppe_clifford_folded.onnx"), 48).ok());
     // the PPE model runs only if it is the exact model its training-notebook card describes
     let ppe = match vg360_infer::card::verify(m("ppe_clifford_folded.onnx")) {
         Ok(_) => ppe,
         Err(e) => { eprintln!("PPE classifier disabled: {e}"); None }
     };
-    let prov = Provenance { model_sha256: sha(&m("yolox_nano.onnx")), ppe_model_sha256: Some(sha(&m("ppe_clifford_folded.onnx"))), calibration_sha256: String::new() };
+    let prov = Provenance { model_sha256: sha(&det_path), ppe_model_sha256: Some(sha(&m("ppe_clifford_folded.onnx"))), calibration_sha256: String::new() };
     Ok((det, ppe, prov))
 }
 
@@ -150,6 +168,9 @@ pub fn start(root: &str, deployed_json: &str, validation: Option<&Value>, twin: 
         // record which models this site runs, with the notebook's model card (MCC, data, SAM settings)
         if let (Some(v), Ok(card)) = (Vesdb::from_env(), vg360_infer::card::verify(format!("{root}/../../models/ppe_clifford_folded.onnx"))) {
             let _ = v.model_deployed("ppe_clifford_folded", card.sha256(), json!({ "card": card.json }));
+        }
+        if let (Some(v), (_, Ok(Some(card)))) = (Vesdb::from_env(), detector(root)) {
+            let _ = v.model_deployed("yolox_nano_ft", card.sha256(), json!({ "card": card.json }));
         }
     }
     for s in specs {

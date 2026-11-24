@@ -80,6 +80,9 @@ pub struct Site {
     /// the PPE model's card from the training notebook, verified against the ONNX file
     #[serde(skip)]
     pub ppe_card: Result<vg360_infer::card::Card, String>,
+    /// person detector in use: stock COCO (`Ok(None)`) or a fine-tuned model with its verified card
+    #[serde(skip)]
+    pub detector: (String, Result<Option<vg360_infer::card::Card>, String>),
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -250,7 +253,8 @@ impl Site {
         let live = crate::live::start(root, &rules_json, validation.as_ref(), twin.as_ref(), state_dir.clone());
         Site { name: "Desert Rig 7 (sample data)", cams, rules: x.rules, ledger, ledger_check, ledger_source: x.source, report,
                iogp, twin: RwLock::new(twin), state_dir, vesdb: Vesdb::from_env(), live,
-               ppe_card: vg360_infer::card::verify(format!("{root}/../../models/ppe_clifford_folded.onnx")) }
+               ppe_card: vg360_infer::card::verify(format!("{root}/../../models/ppe_clifford_folded.onnx")),
+               detector: crate::live::detector(root) }
     }
 
     pub fn cam(&self, id: &str) -> Option<&Cam> { self.cams.iter().find(|c| c.id.eq_ignore_ascii_case(id)) }

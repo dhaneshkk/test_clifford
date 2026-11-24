@@ -349,7 +349,7 @@ pub async fn training(cx: &Cx) -> Result<impl View> {
     let steps = [
         ("1", "Data", "Site footage → audit + crop harvest (§9) → labels; synthetic crops only as a smoke test."),
         ("2", "PPE classifier", "Cl(2,0) Clifford conv, trained with SAM (ρ = 0.05), per-crop standardisation; folded to plain conv for export."),
-        ("3", "Detector", "YOLOX-Nano fine-tune with SAM; 3×3 tiling at 1080p; int8 static QDQ only if it is faster on the target CPU."),
+        ("3", "Detector", "§10: YOLOX-Nano (official layout, COCO weights) fine-tuned with SAM on YOLO-format site labels; cell MCC; drop-in ONNX + card (VG360_DETECTOR)."),
         ("4", "Validate", "Test MCC with bootstrap 95 % CI, plain-CNN baseline, sharpness at the SAM point; model selection on val MCC."),
         ("5", "Export", "Fold → ONNX (opset 17), parity checks, model card with SHA-256, golden crops for the Rust tests; Lean facts checked in CI."),
         ("6", "Serve", "Rust: vg360-infer (ONNX Runtime CPU) → vg360-geom → rules → ledger → this console."),
@@ -363,8 +363,20 @@ pub async fn training(cx: &Cx) -> Result<impl View> {
                 <table class="rules">
                     <thead><tr><th>"Model"</th><th>"Format"</th><th>"CPU latency"</th><th>"Quality"</th><th>"Status"</th></tr></thead>
                     <tbody>
-                        <tr><td><b>"YOLOX-Nano"</b><div class="sub">"person detector, 416²"</div></td><td>"ONNX fp32"</td>
-                            <td class="num">(format!("{fp32:.1} ms"))</td><td>"COCO weights · on real drill-floor footage (RIG 2004) finds 1 of 2–3 workers at 0.35 — fine-tune on labelled rig frames next"</td><td><span class="pill warn">"serving · needs site fine-tune"</span></td></tr>
+                        <tr><td><b>"YOLOX-Nano"</b><div class="sub">"person detector, 416² · COCO"</div></td><td>"ONNX fp32"</td>
+                            <td class="num">(format!("{fp32:.1} ms"))</td><td>"stock weights · on real drill-floor footage (RIG 2004) finds 1 of 2–3 workers at 0.35"</td>
+                            <td>if matches!(site.detector.1, Ok(None)) { <span class="pill warn">"serving · needs site fine-tune"</span> } else { <span class="pill">"standby"</span> }</td></tr>
+                        match &site.detector.1 {
+                            Ok(Some(c)) => {
+                                <tr><td><b>"YOLOX-Nano fine-tuned"</b><div class="sub">(format!("SAM ρ {} · {}", c.json["training"]["rho"], c.sha256()[..12].to_string()))</div></td><td>"ONNX fp32"</td><td class="num">"—"</td>
+                                    <td>(format!("cell MCC {:.3} [{:.3}, {:.3}] (stock {:.3}) · AP50 {:.3} on {}", c.json["metrics"]["test"]["cell_mcc"].as_f64().unwrap_or(f64::NAN),
+                                        c.json["metrics"]["test"]["cell_mcc_ci95"][0].as_f64().unwrap_or(f64::NAN), c.json["metrics"]["test"]["cell_mcc_ci95"][1].as_f64().unwrap_or(f64::NAN),
+                                        c.json["metrics"]["test_before_finetune"]["cell_mcc"].as_f64().unwrap_or(f64::NAN), c.json["metrics"]["test"]["ap50"].as_f64().unwrap_or(f64::NAN), c.data_source()))</td>
+                                    <td><span class=(class!("pill", "ok" if c.real_data(), "warn" if !c.real_data()))>if c.real_data() { "serving" } else { "serving · smoke model (test only)" }</span></td></tr>
+                            }
+                            Err(e) => { <tr><td><b>"YOLOX-Nano fine-tuned"</b></td><td colspan="3">(e.clone())</td><td><span class="pill bad">"refused"</span></td></tr> }
+                            Ok(None) => {}
+                        }
                         <tr><td><b>"YOLOX-Nano"</b><div class="sub">"static QDQ int8"</div></td><td>"ONNX int8"</td>
                             <td class="num">(format!("{int8:.1} ms"))</td><td>"same detections on test frame (3 / 3)"</td><td><span class="pill warn">"rejected — slower"</span></td></tr>
                         <tr><td><b>"PPE Clifford-conv"</b><div class="sub">(format!("{} Clifford weights → {} folded · SAM ρ {}", cj("/conv_params/clifford_trainable"), cj("/conv_params/folded_real"), cj("/training/rho")))</div></td>

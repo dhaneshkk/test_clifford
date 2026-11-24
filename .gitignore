@@ -11,3 +11,4 @@ state/
 footage_audit/
 vg360_train_out/
 __pycache__/
+detector_smoke/

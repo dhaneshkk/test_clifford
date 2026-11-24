@@ -31,11 +31,12 @@ config/          vg360_site_catalog.json (iogp-editor vocabulary for this rig), 
 notebooks/       vg360_train_cpu.ipynb — training only (single cell): PPE model, SAM, MCC, ONNX, card, golden, footage audit
                  vg360_clifford_safety_cpu.ipynb — the original research notebook (simulation, scene goldens)
 lean/            Lake project (Mathlib v4.36.0), built in CI: VG360/CGA (zone / ray closed forms),
-                 VG360/Clifford (Cl(2,0) table), VG360/Train (conv folding, MCC bounds, SAM step)
+                 VG360/Clifford (Cl(2,0) table), VG360/Train (conv folding, MCC bounds, SAM step),
+                 VG360/Detect (IoU and IoU-loss bounds, letterbox round trip)
 testdata/        notebook exports (rules, ledger) and frames used by the golden tests
 ```
 
-## Status — Phases 0–5 + integration (Rig Twin, Rule Studio, iogp-editor, vesdb)
+## Status — Phases 0–6 (pipeline) + integration (Rig Twin, Rule Studio, iogp-editor, vesdb)
 
 | Area | State |
 |---|---|
@@ -138,7 +139,7 @@ answers deterministically from site state (no LLM), so every number it gives is 
    ≥ 60 matched points) are configurable per camera (`CompLimits`).
 4. ~~Live console~~ done: per-camera workers, SSE updates, snapshots, site signals, streaming chat completions.
 5. ~~Training notebook + Lean in CI~~ done (see *Training* below).
-6. Next: fine-tune the detector on labelled rig footage (see *Real footage*).
+6. ~~Detector fine-tune pipeline~~ done (see *Detector fine-tune*); training it on rig footage needs labelled frames.
 
 ## Training (Phase 5)
 
@@ -169,6 +170,31 @@ layer (`fold_correct`, `fold_conv`); that MCC is 1 for a perfect classifier, −
 unchanged when the classes are swapped, and always in [−1, 1]; and that SAM's `ε = ρg/‖g‖` has norm ρ and
 maximises the linearised loss over the ρ-ball (`sam_eps_maximizes`).
 
+## Detector fine-tune (Phase 6 — pipeline)
+
+Notebook §10 fine-tunes YOLOX-Nano for persons with SAM and exports a drop-in replacement for
+`models/yolox_nano.onnx` (same `images` → `output [1,3549,85]` layout, so `vg360-infer` is unchanged).
+
+| step | what it does |
+|---|---|
+| model | YOLOX-Nano re-implemented in PyTorch in Megvii's layout. It loads `yolox_nano.pth` with `strict=True`, and its outputs match the stock ONNX (max \|Δ\| 9e-5) |
+| data | `CFG.det_dir` / `VG360_DET_DIR` in YOLO format (`images/` + `labels/` × train / val / test, class 0 = person), e.g. `footage_audit/frames` labelled in CVAT. Without it: procedural overhead-camera smoke frames (standing, crouching and top-down workers, machinery, helmet-like distractors) |
+| train | YOLOX loss with SimOTA assignment (5·IoU + obj + cls), SAM over SGD, frozen backbone and BN statistics, gradient clip 10, best epoch on val cell MCC |
+| metric | **cell MCC**: 16-px cells of the 416² letterbox, positive where a person box centre falls. Unlike box AP it has true negatives. Reported with bootstrap 95 % CI, plus P / R / F1 at IoU 0.5 and AP50, before and after fine-tuning |
+| export | ONNX + `yolox_nano_ft.card.json` + golden frames and raw output rows. Smoke-set output goes to `detector_smoke/` (git-ignored), never to `models/` |
+
+Rust: `VG360_DETECTOR=models/yolox_nano_ft.onnx` switches the live workers to a fine-tuned detector.
+It is served only if it matches its card and was trained on real site frames; a smoke-set model is
+refused unless `VG360_ALLOW_SMOKE_MODELS=1`. `/training` shows its card, and vesdb records
+`model-deployed`. CI runs the notebook in FAST mode, then
+`VG360_DET_FT_DIR=… cargo test -p vg360-infer detector_finetune`. That test checks the raw outputs on
+the same tensor (< 2e-3) and the confident boxes within 1 px through the Rust letterbox and NMS.
+
+Smoke set (400 / 100 / 100 frames, 12 epochs, CPU): cell MCC **0.376 → 0.808** [0.747, 0.866], AP50
+0.387 → 0.963. This shows the training loop, export and Rust path work end to end; it says nothing
+about rig cameras. The PPE model re-trained in the same run is byte-identical to the committed one
+(sha256 `8b16c550…`), so the notebook is reproducible.
+
 ## Real footage (RIG 2004 drill floor)
 
 76 s screen recording of a wide-angle overhead drill-floor camera at night (1024×576 stream, 2–6 fps).
@@ -181,8 +207,8 @@ The footage stays out of the repository. Audit at 1 fps, 75 usable frames:
 * **PPE on the detected worker** (helmet, 60 frames): P(helmet) 0.69–0.72, all correct. The machinery
   boxes score 0.18–0.37, so they would raise false no-helmet alerts. The pipeline needs a detector that
   knows this camera.
-* Next: label person boxes on rig frames (CVAT, YOLO format; `footage_audit/frames`) and fine-tune
-  YOLOX-Nano with SAM in the notebook. Real helmet / no-helmet crops then replace the synthetic set.
+* Next: label person boxes on rig frames (CVAT, YOLO format; `footage_audit/frames`) and run §10 with
+  `VG360_DET_DIR`. Real helmet / no-helmet crops then replace the synthetic PPE set.
 
 ## Caveats
 

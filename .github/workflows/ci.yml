@@ -59,7 +59,7 @@ jobs:
         with:
           lake-package-directory: lean
   notebook:
-    name: training notebook (single cell, VG360_FAST=1 smoke run)
+    name: training notebook (single cell, VG360_FAST=1 smoke run) → Rust detector golden
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -69,8 +69,14 @@ jobs:
       - run: pip install onnx onnxruntime opencv-python-headless scikit-learn nbformat
       - name: notebook is one valid nbformat cell
         run: python -c "import nbformat as n; nb=n.read('notebooks/vg360_train_cpu.ipynb',4); n.validate(nb); assert len(nb.cells)==1 and nb.cells[0].cell_type=='code'"
-      - name: smoke run (Clifford + CNN with SAM, fold, ONNX parity, card, golden)
+      - name: smoke run (PPE Clifford + CNN, YOLOX-Nano fine-tune; SAM, ONNX parity, cards, golden)
         run: |
+          ./scripts/fetch_models.sh
           python -c "import nbformat as n; open('/tmp/cell.py','w').write(n.read('notebooks/vg360_train_cpu.ipynb',4).cells[0].source)"
           VG360_FAST=1 VG360_OUT=/tmp/vg360_out python /tmp/cell.py
           python -c "import json; c=json.load(open('/tmp/vg360_out/models/ppe_clifford_folded.card.json')); assert c['parity']['max_abs_torch_vs_onnxruntime'] < 1e-3; print(c['metrics']['test_mcc'])"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: fine-tuned detector from the notebook runs identically in Rust (raw rows, boxes ≤ 1 px)
+        run: |
+          VG360_DET_FT_DIR=/tmp/vg360_out/detector_smoke cargo test --release -p vg360-infer --test golden detector_finetune -- --nocapture

@@ -4,6 +4,7 @@
 //! closed forms below (ray–plane meet = ground homography, CGA inner product = signed
 //! sphere test, 2-D PGA join = side-of-line test). Golden tests check them against values
 //! exported by the notebook.
+pub mod autocal;
 pub mod camera;
 pub mod ledger;
 pub mod metrics;

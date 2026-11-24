@@ -13,7 +13,11 @@ use crate::camera::Camera;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TwinCamera {
     pub id: String,
+    /// pinhole model; for a fisheye camera, its pose (centre, heading, tilt) — the lens is in `lens`
     pub camera: Camera,
+    /// fisheye lens (Kannala–Brandt), when the twin camera has `"lens": {"model": "kannala-brandt", …}`
+    #[serde(default)]
+    pub lens: Option<LensSpec>,
     pub width: u32,
     pub height: u32,
     /// deck surface the camera looks at (m)
@@ -38,6 +42,24 @@ impl TwinCamera {
 pub fn wrap180(a: f64) -> f64 { let x = (a + 180.0).rem_euclid(360.0) - 180.0; if x == -180.0 { 180.0 } else { x } }
 
 /// Parse a twin export. Errors name the first problem.
+/// Kannala–Brandt fisheye intrinsics in the camera's own pixels, plus optional virtual views
+/// (`[[bearing°, pitch°], …]` in world terms; default chosen by `vg360_pipeline::FisheyeRig`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LensSpec { pub fx: f64, pub fy: f64, pub cx: f64, pub cy: f64, pub k: [f64; 4], pub views: Option<Vec<[f64; 2]>> }
+
+fn lens(c: &Value, id: &str) -> Result<Option<LensSpec>, String> {
+    let l = &c["lens"];
+    if l.is_null() { return Ok(None); }
+    let m = l["model"].as_str().unwrap_or("");
+    if !matches!(m, "kannala-brandt" | "kb" | "fisheye") { return Err(format!("camera {id}: lens model {m:?} (supported: kannala-brandt)")); }
+    let n = |k: &str| l[k].as_f64().ok_or(format!("camera {id}: lens.{k} missing"));
+    let k = l["k"].as_array().ok_or(format!("camera {id}: lens.k missing"))?;
+    if k.len() != 4 { return Err(format!("camera {id}: lens.k needs 4 coefficients")); }
+    let views = l["views"].as_array().map(|v| v.iter().filter_map(|p| Some([p[0].as_f64()?, p[1].as_f64()?])).collect());
+    Ok(Some(LensSpec { fx: n("fx")?, fy: l["fy"].as_f64().unwrap_or(n("fx")?), cx: n("cx")?, cy: n("cy")?,
+                       k: [0, 1, 2, 3].map(|i| k[i].as_f64().unwrap_or(0.0)), views }))
+}
+
 pub fn cameras(twin: &Value) -> Result<Vec<TwinCamera>, String> {
     if twin["vg360_twin"].as_i64() != Some(1) { return Err("not a VG360 twin file (vg360_twin != 1)".into()); }
     let cams = twin["cameras"].as_array().ok_or("twin has no cameras")?;
@@ -46,7 +68,8 @@ pub fn cameras(twin: &Value) -> Result<Vec<TwinCamera>, String> {
         let num = |k: &str| c[k].as_f64().ok_or(format!("camera {id}: missing {k}"));
         let res = c["res"].as_str().ok_or(format!("camera {id}: missing res (export from the current Rig Twin)"))?;
         let (w, h) = res.split_once('x').and_then(|(a, b)| Some((a.parse::<u32>().ok()?, b.parse::<u32>().ok()?))).ok_or(format!("camera {id}: bad res {res}"))?;
-        let (fov, surf) = (num("fov")?, c["surf"].as_f64().unwrap_or(0.0));
+        let lens = lens(c, &id)?;
+        let (fov, surf) = (if lens.is_some() { c["fov"].as_f64().unwrap_or(90.0) } else { num("fov")? }, c["surf"].as_f64().unwrap_or(0.0));
         let f = (w as f64 / 2.0) / (fov.to_radians() / 2.0).tan();
         let camera = Camera { f_px: f, cx: w as f64 / 2.0, cy: h as f64 / 2.0, height_m: num("h")? - surf, pitch_deg: num("pitch")?,
                               yaw_deg: wrap180(90.0 - num("yaw")?), roll_deg: 0.0, x0: num("x")?, y0: num("y")? };
@@ -55,7 +78,7 @@ pub fn cameras(twin: &Value) -> Result<Vec<TwinCamera>, String> {
             p["name"].as_str().unwrap_or("").to_string(),
             [p["world"][0].as_f64()?, p["world"][1].as_f64()?],
             [p["predicted_px"][0].as_f64()?, p["predicted_px"][1].as_f64()?]))).collect();
-        Ok(TwinCamera { id, camera, width: w, height: h, surf, points })
+        Ok(TwinCamera { id, camera, lens, width: w, height: h, surf, points })
     }).collect()
 }
 
@@ -75,6 +98,20 @@ mod tests {
             }
         }
         assert!(checked >= 5, "{checked} cameras with calibration points");
+    }
+
+    #[test]
+    fn fisheye_lens_in_a_twin_camera() {
+        let mut v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../testdata/twin/rig_twin.json")).unwrap()).unwrap();
+        v["cameras"][0]["lens"] = serde_json::json!({ "model": "kannala-brandt", "fx": 892, "cx": 1440, "cy": 1440, "k": [0.02, -0.01, 0.002, -0.0005],
+                                                      "views": [[0, 35], [120, 35], [240, 35]] });
+        let cams = super::cameras(&v).unwrap();
+        let l = cams[0].lens.as_ref().unwrap();
+        assert_eq!((l.fx, l.fy, l.k[3]), (892.0, 892.0, -0.0005));
+        assert_eq!(l.views.as_ref().unwrap().len(), 3);
+        assert!(cams[1].lens.is_none());
+        v["cameras"][0]["lens"]["model"] = "mei".into();
+        assert!(super::cameras(&v).is_err());
     }
 }
 

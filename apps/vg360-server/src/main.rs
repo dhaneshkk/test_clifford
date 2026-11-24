@@ -39,6 +39,7 @@ pub fn router(root: &str) -> Router {
         .route(api::live_jpeg)
         .route(api::live_evidence_jpeg)
         .route(api::signals)
+        .route(api::calibrate)
         .public_dir(format!("{root}/public"))
         .build()
 }

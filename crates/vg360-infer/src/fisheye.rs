@@ -19,6 +19,31 @@ pub struct View { pub cam: Camera, pub yaw: f64, pub pitch: f64, /// per view pi
 pub struct DeckDet { pub det: Det, pub view: usize, pub deck: [f64; 2] }
 
 impl FisheyeCam {
+    /// Fisheye with the pose of a pinhole camera (its rotation and centre). A camera looking straight down
+    /// (pitch 90°) is built at 89.9° so that its heading stays defined.
+    pub fn from_pose(lens: Fisheye, pose: &Camera) -> Self {
+        let p = Camera { pitch_deg: pose.pitch_deg.min(89.9), ..pose.clone() };
+        Self { lens, r_cw: p.rotation(), c: p.centre() }
+    }
+
+    /// Fisheye pixel → world direction.
+    pub fn px_to_world_dir(&self, u: f64, v: f64) -> [f64; 3] {
+        let d = self.lens.unproject(u, v);
+        let r = &self.r_cw;
+        [0, 1, 2].map(|i| r[i][0] * d[0] + r[i][1] * d[1] + r[i][2] * d[2])
+    }
+
+    /// What this fisheye would see of a scene filmed by the pinhole camera `pin` from the same centre
+    /// (resample a pinhole clip into a fisheye one; the notebook's `fisheye_from_pinhole_maps`).
+    pub fn render_from_pinhole(&self, pin: &Camera, src: &vg360_vision::img::Bgr, w: usize, h: usize, fill: [u8; 3]) -> vg360_vision::img::Bgr {
+        let r = pin.rotation();
+        src.remap(w, h, fill, |u, v| {
+            let d = self.px_to_world_dir(u, v);
+            let c = [0, 1, 2].map(|k| r[0][k] * d[0] + r[1][k] * d[1] + r[2][k] * d[2]);
+            (c[2] > 1e-3).then(|| (pin.f_px * c[0] / c[2] + pin.cx, pin.f_px * c[1] / c[2] + pin.cy))
+        })
+    }
+
     /// World direction → fisheye pixel.
     pub fn world_dir_to_px(&self, d: [f64; 3]) -> Option<(f64, f64)> {
         let r = &self.r_cw;

@@ -52,6 +52,24 @@ fn ray_plane(c: [f64; 3], d: [f64; 3], n: [f64; 3], delta: f64) -> Option<[f64; 
     Some([c[0] + s * d[0], c[1] + s * d[1], c[2] + s * d[2]])
 }
 
+/// One box seen by `cam` → (feet origin, head height, tilt, pose IoU); `None` if it cannot stand on the deck.
+/// Fisheye cameras call this with the pinhole camera of the virtual view the box was found in.
+pub fn box_geometry(cam: &Camera, b: [f64; 4]) -> Option<([f64; 2], f64, f64, f64)> {
+    let c = cam.centre();
+    let uc = (b[0] + b[2]) / 2.0;
+    let ft = ray_plane(c, cam.ray(uc, b[3]), [0.0, 0.0, 1.0], 0.0)?;
+    let fwd = { let r = cam.rotation(); [r[0][2], r[1][2], r[2][2]] };
+    if (ft[0] - c[0]) * fwd[0] + (ft[1] - c[1]) * fwd[1] + (ft[2] - c[2]) * fwd[2] <= 0.0 { return None; }
+    // head ray ∧ vertical plane through the feet facing the camera
+    let mut n = [ft[0] - c[0], ft[1] - c[1], 0.0];
+    let l = (n[0] * n[0] + n[1] * n[1]).sqrt() + 1e-9;
+    n = [n[0] / l, n[1] / l, 0.0];
+    let mut hz = ray_plane(c, cam.ray(uc, b[1]), n, -(n[0] * ft[0] + n[1] * ft[1])).map_or(0.0, |x| x[2]);
+    let pose = fit_pose(cam, b, [ft[0], ft[1]]);
+    if pose.tilt_deg > 1.0 { hz = pose.top_z; }
+    Some((pose.origin, hz, pose.tilt_deg, pose.iou))
+}
+
 pub struct Scene {
     pub cam: Camera,
     pub zones: Vec<Zone>,
@@ -67,22 +85,7 @@ impl Scene {
     }
 
     /// One box → (feet origin, head height, tilt, pose IoU); `None` if it cannot stand on the deck.
-    pub fn box_geometry(&self, b: [f64; 4]) -> Option<([f64; 2], f64, f64, f64)> {
-        let cam = &self.cam;
-        let c = cam.centre();
-        let uc = (b[0] + b[2]) / 2.0;
-        let ft = ray_plane(c, cam.ray(uc, b[3]), [0.0, 0.0, 1.0], 0.0)?;
-        let fwd = { let r = cam.rotation(); [r[0][2], r[1][2], r[2][2]] };
-        if (ft[0] - c[0]) * fwd[0] + (ft[1] - c[1]) * fwd[1] + (ft[2] - c[2]) * fwd[2] <= 0.0 { return None; }
-        // head ray ∧ vertical plane through the feet facing the camera
-        let mut n = [ft[0] - c[0], ft[1] - c[1], 0.0];
-        let l = (n[0] * n[0] + n[1] * n[1]).sqrt() + 1e-9;
-        n = [n[0] / l, n[1] / l, 0.0];
-        let mut hz = ray_plane(c, cam.ray(uc, b[1]), n, -(n[0] * ft[0] + n[1] * ft[1])).map_or(0.0, |x| x[2]);
-        let pose = fit_pose(cam, b, [ft[0], ft[1]]);
-        if pose.tilt_deg > 1.0 { hz = pose.top_z; }
-        Some((pose.origin, hz, pose.tilt_deg, pose.iou))
-    }
+    pub fn box_geometry(&self, b: [f64; 4]) -> Option<([f64; 2], f64, f64, f64)> { box_geometry(&self.cam, b) }
 
     fn recent_fall_near(&self, t: f64, xy: [f64; 2]) -> bool {
         let n = self.events.len();
@@ -141,6 +144,12 @@ impl Scene {
     /// All person boxes of one frame → one record per box (`None` where the box cannot be on the deck).
     pub fn analyse(&mut self, boxes: &[[f64; 4]], t: f64) -> Vec<Option<Rec>> {
         let geo: Vec<Option<([f64; 2], f64, f64, f64)>> = boxes.iter().map(|b| self.box_geometry(*b)).collect();
+        self.analyse_geo(boxes, &geo, t)
+    }
+
+    /// Like [`Scene::analyse`] with the per-box geometry already computed (fisheye: each box through its own
+    /// virtual view's camera). `boxes` are only carried into the records.
+    pub fn analyse_geo(&mut self, boxes: &[[f64; 4]], geo: &[Option<([f64; 2], f64, f64, f64)>], t: f64) -> Vec<Option<Rec>> {
         let valid: Vec<usize> = (0..boxes.len()).filter(|&i| geo[i].is_some()).collect();
         let feet: Vec<[f64; 2]> = valid.iter().map(|&i| geo[i].unwrap().0).collect();
         let ids = self.tracker.step(&feet, t);

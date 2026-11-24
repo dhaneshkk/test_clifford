@@ -18,7 +18,7 @@ use serde_json::{Value, json};
 use tokio::sync::broadcast;
 use vg360_evidence::Vesdb;
 use vg360_geom::camera::Camera;
-use vg360_geom::twin::{TwinCamera, TwinZone};
+use vg360_geom::twin::{LensSpec, TwinCamera, TwinZone};
 use vg360_infer::{ppe::Ppe, yolox::Yolox};
 use vg360_pipeline::{CameraWorker, FrameResult, Provenance, RuleSet, WorkerCfg};
 use vg360_rules::{Deployed, Signals, SiteMap, ZoneMap};
@@ -33,6 +33,9 @@ pub struct CamLive {
     pub frames: u64,
     pub fps: f64,
     pub error: Option<String>,
+    /// frame size (px) and lens, for the overlay
+    pub size: (usize, usize),
+    pub fisheye: bool,
     last_push: Option<Instant>,
     started: Instant,
 }
@@ -49,7 +52,7 @@ impl Live {
     pub fn snapshot(&self) -> Value {
         let cams = self.cams.read().unwrap();
         json!({
-            "cameras": cams.iter().map(|(id, c)| json!({ "id": id, "label": c.label, "source": c.source, "frames": c.frames,
+            "cameras": cams.iter().map(|(id, c)| json!({ "id": id, "label": c.label, "source": c.source, "frames": c.frames, "w": c.size.0, "h": c.size.1, "fisheye": c.fisheye,
                 "fps": c.fps, "error": c.error, "latest": c.summary })).collect::<Vec<_>>(),
             "alerts": self.alerts.read().unwrap().iter().cloned().collect::<Vec<_>>(),
             "signals": { "suspended_load": self.signals.read().unwrap().suspended_load, "active": self.signals.read().unwrap().active },
@@ -66,7 +69,7 @@ pub fn summarise(r: &FrameResult) -> Value {
                 "down": rec.map(|x| x.state.down), "inside": rec.map(|x| x.zones.iter().filter(|(_, c)| *c < 0.0).map(|(z, _)| z.clone()).collect::<Vec<_>>()) })
     }).collect();
     json!({ "camera": r.camera, "t": r.t, "status": r.status, "mode": r.mode, "pose": r.pose, "inliers": r.inliers,
-            "ref_box": r.ref_box, "people": people, "ms": r.ms })
+            "ref_box": r.ref_box, "people": people, "ms": r.ms, "height_m": r.height_m, "calibrating": r.calibrating })
 }
 
 fn alert_json(r: &FrameResult, a: &vg360_pipeline::Alarm) -> Value {
@@ -75,7 +78,8 @@ fn alert_json(r: &FrameResult, a: &vg360_pipeline::Alarm) -> Value {
             "incident": a.incident, "evidence": a.evidence, "snapshot_sha256": a.snapshot_sha256 })
 }
 
-struct Spec { id: String, label: String, url: String, camera: Camera, size: (usize, usize), zones: Vec<Zone>, site: SiteMap }
+struct Spec { id: String, label: String, url: String, camera: Camera, size: (usize, usize), zones: Vec<Zone>, site: SiteMap,
+              lens: Option<LensSpec>, auto_height: bool }
 
 /// Scene zones and rule mapping for a twin camera: every zone the twin says this camera watches, on its deck.
 fn twin_zones(cam: &TwinCamera, zones: &[TwinZone]) -> (Vec<Zone>, SiteMap) {
@@ -104,16 +108,26 @@ fn specs(root: &str, twin: Option<&crate::state::TwinState>) -> Vec<Spec> {
         for c in &t.cameras {
             let Ok(url) = std::env::var(format!("VG360_CAM_{}_URL", c.id.replace('-', "_"))) else { continue };
             let (z, site) = twin_zones(c, &zones);
-            v.push(Spec { id: c.id.clone(), label: format!("{} (Rig Twin)", c.id), url, camera: c.camera.clone(),
-                          size: (c.width as usize, c.height as usize), zones: z, site });
+            let env = |k: &str| std::env::var(format!("VG360_CAM_{}_{k}", c.id.replace('-', "_"))).is_ok_and(|v| v == "1");
+            v.push(Spec { id: c.id.clone(), label: format!("{} (Rig Twin{})", c.id, if c.lens.is_some() { ", fisheye" } else { "" }), url,
+                          camera: c.camera.clone(), size: (c.width as usize, c.height as usize), zones: z, site, lens: c.lens.clone(),
+                          auto_height: env("AUTO_HEIGHT") });
         }
     }
     if std::env::var("VG360_DEMO").is_ok_and(|d| d == "1") {
         let url = std::env::var("VG360_DEMO_CLIP").unwrap_or_else(|_| format!("{root}/../../testdata/clip/clip.mp4"));
         // the simulated clip's own camera: 10 m mast, 25° down, 70° HFOV, 1280×720
         let camera = Camera { f_px: 640.0 / 35f64.to_radians().tan(), cx: 640.0, cy: 360.0, height_m: 10.0, pitch_deg: 25.0, yaw_deg: 0.0, roll_deg: 0.0, x0: 0.0, y0: 0.0 };
-        v.push(Spec { id: "DEMO".into(), label: "Rig demo clip (simulated render, replayed as a camera)".into(), url, camera,
-                      size: (1280, 720), zones: default_zones(), site: SiteMap::rig_default() });
+        v.push(Spec { id: "DEMO".into(), label: "Rig demo clip (simulated render, replayed as a camera)".into(), url, camera: camera.clone(),
+                      size: (1280, 720), zones: default_zones(), site: SiteMap::rig_default(), lens: None, auto_height: false });
+        if std::env::var("VG360_DEMO_FISHEYE").is_ok_and(|d| d == "1") {
+            // the same clip resampled into a 185° fisheye on the same mast (examples/fisheye_clip.rs)
+            v.push(Spec { id: "DEMO-FE".into(), label: "Rig demo clip as a 185° fisheye (3 virtual views)".into(),
+                          url: format!("{root}/../../testdata/clip/clip_fisheye.mp4"), camera, size: (2880, 2880), zones: default_zones(),
+                          site: SiteMap::rig_default(), auto_height: false,
+                          lens: Some(LensSpec { fx: 892.0, fy: 892.0, cx: 1440.0, cy: 1440.0, k: [0.02, -0.01, 0.002, -0.0005],
+                                                views: Some(vec![[-30.0, 25.0], [0.0, 25.0], [30.0, 25.0]]) }) });
+        }
     }
     v
 }
@@ -175,7 +189,7 @@ pub fn start(root: &str, deployed_json: &str, validation: Option<&Value>, twin: 
     }
     for s in specs {
         live.cams.write().unwrap().insert(s.id.clone(), CamLive { label: s.label.clone(), source: if s.url.starts_with("rtsp") { "rtsp".into() } else { "file".into() },
-            summary: None, jpeg: None, frames: 0, fps: 0.0, error: None, last_push: None, started: Instant::now() });
+            summary: None, jpeg: None, frames: 0, fps: 0.0, error: None, size: s.size, fisheye: s.lens.is_some(), last_push: None, started: Instant::now() });
         let (live2, root2, cfg_json, val, sd) = (live.clone(), root.to_string(), deployed_json.to_string(), validation.cloned(), state_dir.clone());
         std::thread::spawn(move || {
             let fail = |e: String| { if let Some(c) = live2.cams.write().unwrap().get_mut(&s.id) { c.error = Some(e); } };
@@ -183,8 +197,13 @@ pub fn start(root: &str, deployed_json: &str, validation: Option<&Value>, twin: 
             let dep = match Deployed::load(&cfg_json) { Ok(d) => d, Err(e) => return fail(e) };
             prov.calibration_sha256 = vg360_evidence::sha256_hex(serde_json::to_string(&s.camera).unwrap_or_default().as_bytes());
             let rules = Arc::new(RuleSet::new(dep, s.site, val.as_ref()));
-            let mut w = CameraWorker::new(&s.id, det, ppe, Scene::new(s.camera, s.zones), rules,
-                                          WorkerCfg { tiles, snapshot_every: 2, ..Default::default() });
+            let mut w = CameraWorker::new(&s.id, det, ppe, Scene::new(s.camera.clone(), s.zones), rules,
+                                          WorkerCfg { tiles, snapshot_every: 2, auto_height_boxes: if s.auto_height { 12 } else { 0 }, ..Default::default() });
+            if let Some(l) = &s.lens {
+                let fc = vg360_infer::fisheye::FisheyeCam::from_pose(vg360_vision::lens::Fisheye { fx: l.fx, fy: l.fy, cx: l.cx, cy: l.cy, k: l.k }, &s.camera);
+                let views = l.views.as_ref().map(|v| v.iter().map(|p| (p[0], p[1])).collect());
+                w = w.with_fisheye(vg360_pipeline::FisheyeRig::new(fc, s.camera.yaw_deg, s.camera.pitch_deg, views, (960, 540)));
+            }
             if let Some(v) = Vesdb::from_env() { w = w.with_evidence(Arc::new(v), prov); }
             let sig = live2.signals.clone();
             let rx = vg360_pipeline::spawn_stream(w, s.url, s.size.0, s.size.1, fps, 3, move |_| sig.read().unwrap().clone());

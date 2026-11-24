@@ -230,3 +230,42 @@ pub async fn signals(cx: &Cx, Json(r): Json<SignalsReq>) -> Result<Json<Value>> 
     let _ = site.live.tx.send(("signals".into(), v.to_string()));
     Ok(Json(v))
 }
+
+// ───────────────────────────── auto-calibration (no surveyed deck points)
+
+#[derive(Deserialize)]
+pub struct CalibReq {
+    pub width: f64,
+    pub height: f64,
+    /// image segments [x1, y1, x2, y2] of one family of parallel horizontal deck edges …
+    pub lines_a: Vec<[f64; 4]>,
+    /// … and of a second family at right angles to the first
+    pub lines_b: Vec<[f64; 4]>,
+    /// optional boxes [x1, y1, x2, y2] of people standing upright → mount height
+    #[serde(default)] pub people: Vec<[f64; 4]>,
+    #[serde(default)] pub person_m: Option<f64>,
+}
+
+/// Vanishing points → focal length, field of view, pitch, roll; standing people → mount height.
+/// The result's `twin` block is what to enter for the camera in the Rig Twin (fov, pitch, h above the deck).
+#[route(POST "/api/calibrate")]
+pub async fn calibrate(cx: &Cx, Json(r): Json<CalibReq>) -> Result<Json<Value>> {
+    use vg360_geom::autocal;
+    let seg = |l: &Vec<[f64; 4]>| l.iter().map(|s| ([s[0], s[1]], [s[2], s[3]])).collect::<Vec<_>>();
+    let (Some(v1), Some(v2)) = (autocal::vanishing_point(&seg(&r.lines_a)), autocal::vanishing_point(&seg(&r.lines_b))) else {
+        return Ok(Json(json!({ "ok": false, "error": "each family needs ≥ 2 segments that are not parallel in the image" })));
+    };
+    let Some(k) = autocal::from_vanishing_points(v1, v2, r.width / 2.0, r.height / 2.0, r.width) else {
+        return Ok(Json(json!({ "ok": false, "vanishing_points": [v1, v2],
+            "error": "the two families do not look orthogonal from a real camera (f² ≤ 0): check that they are at right angles on the deck" })));
+    };
+    let cam = vg360_geom::camera::Camera { f_px: k.f_px, cx: r.width / 2.0, cy: r.height / 2.0, height_m: 1.0, pitch_deg: k.pitch_deg,
+                                          yaw_deg: 0.0, roll_deg: k.roll_deg, x0: 0.0, y0: 0.0 };
+    let h = (!r.people.is_empty()).then(|| autocal::height_from_people(&cam, &r.people, r.person_m.unwrap_or(1.70))).flatten();
+    Ok(Json(json!({ "ok": true, "vanishing_points": [v1, v2], "f_px": k.f_px, "hfov_deg": k.hfov_deg, "pitch_deg": k.pitch_deg,
+        "roll_deg": k.roll_deg, "height_m": h,
+        "twin": { "fov": (k.hfov_deg * 10.0).round() / 10.0, "pitch": (k.pitch_deg * 10.0).round() / 10.0, "h_above_deck": h.map(|h| (h * 100.0).round() / 100.0) },
+        "notes": [ "pitch/fov/height assume square pixels and a centred principal point",
+                   if k.roll_deg.abs() > 2.0 { "roll above 2°: level the camera or calibrate from deck points (the twin assumes zero roll)" } else { "roll ≈ 0" },
+                   if h.is_none() { "no height: add boxes of standing people, or set VG360_CAM_<ID>_AUTO_HEIGHT=1 to estimate it live" } else { "height from the median head height of the people boxes (1.70 m assumed)" } ] })))
+}

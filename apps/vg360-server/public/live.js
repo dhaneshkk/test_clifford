@@ -17,14 +17,16 @@
     if (l.ref_box && l.mode !== "Aligned") g += `<polygon class="refbox" points="${l.ref_box.map((p) => p.join(",")).join(" ")}"/>`;
     for (const p of l.people) {
       const [x1, y1, x2, y2] = p.box;
+      const sw = Math.max(3, svg.viewBox.baseVal.width / 400);
       const cls = p.down ? "pb down" : (p.inside && p.inside.length ? "pb in" : (p.helmet != null && p.helmet < 0.5 ? "pb noppe" : "pb"));
       const tag = [p.track != null ? `#${p.track}` : "", p.down ? "DOWN" : "", (p.inside || []).join(" "),
                    p.helmet != null ? `helmet ${(p.helmet * 100).toFixed(0)}%` : ""].filter(Boolean).join(" · ");
-      g += `<rect class="${cls}" x="${x1}" y="${y1}" width="${x2 - x1}" height="${y2 - y1}"/><text class="pt" x="${x1}" y="${Math.max(14, y1 - 5)}">${esc(tag)}</text>`;
+      g += `<rect class="${cls}" style="stroke-width:${sw}" x="${x1}" y="${y1}" width="${x2 - x1}" height="${y2 - y1}"/><text class="pt" style="font-size:${sw * 9}px" x="${x1}" y="${Math.max(14, y1 - 5)}">${esc(tag)}</text>`;
     }
     svg.innerHTML = g;
     el.querySelector(".stat").textContent =
-      `${m.fps.toFixed(1)} fps · ${l.ms.toFixed(0)} ms · ${l.people.length} in view · ${l.mode}${l.status !== "Ok" ? " · guard " + l.status : ""}`;
+      `${m.fps.toFixed(1)} fps · ${l.ms.toFixed(0)} ms · ${l.people.length} in view · ${l.mode}${l.status !== "Ok" ? " · guard " + l.status : ""}` +
+      (l.calibrating ? " · estimating mount height (rules off)" : ` · h ${l.height_m.toFixed(1)} m`);
   }
 
   function alert(a) {

@@ -32,9 +32,12 @@ notebooks/       vg360_train_cpu.ipynb — training only (single cell): PPE mode
                  vg360_clifford_safety_cpu.ipynb — the original research notebook (simulation, scene goldens)
 lean/            Lake project (Mathlib v4.36.0), built in CI: VG360/CGA (zone / ray closed forms),
                  VG360/Clifford (Cl(2,0) table), VG360/Train (conv folding, MCC bounds, SAM step),
-                 VG360/Detect (IoU and IoU-loss bounds, letterbox round trip)
+                 VG360/Detect (IoU and IoU-loss bounds, letterbox round trip),
+                 VG360/Calib (focal length from vanishing points, height from people)
 testdata/        notebook exports (rules, ledger) and frames used by the golden tests
 ```
+
+**User guide: [docs/USER_GUIDE.md](docs/USER_GUIDE.md)**
 
 ## Status — Phases 0–6 (pipeline) + integration (Rig Twin, Rule Studio, iogp-editor, vesdb)
 
@@ -49,6 +52,8 @@ testdata/        notebook exports (rules, ledger) and frames used by the golden 
 | Console | 7 pages; camera cards on sample data (CAM-05 measured by the guard at start-up); `/live` runs the real pipeline |
 | Live console (Phase 4) | one worker thread per stream → SSE (`frame` ≤ 4 Hz/camera, `alert` immediately); latest-frame JPEG; alert snapshots saved as `state/evidence/<incident>.jpg` whose SHA-256 is in the alert and its vesdb incident; site signals (crane load, pipe handling) gate the rules; streaming `/v1/chat/completions` |
 | Live camera guard + compensation (`vg360-pipeline`) | rig clip knocked mid-run by +32 px / −14 px / 1.5°: analytics continue (mode `Compensated`), people stay on their deck spots (mean error 0.24 m vs 0.85 m uncompensated, 19/21 within 0.5 m), all 4 track ids survive the knock; a 9° / 180 px knock pauses analytics; a covered lens pauses them after the 5 s hold |
+| Fisheye cameras live | twin camera `lens` block (Kannala–Brandt) → 3 upright virtual views, one tracker; demo 185° fisheye (2880²) finds 56 of 57 people the pinhole finds, deck positions within 0.06 m median; moves pause analytics |
+| Auto-calibration | `POST /api/calibrate`: vanishing points of two orthogonal deck-edge families → f / FOV, pitch, roll (synthetic test: 70.0°, 32.0°, 0.0°); standing people → mount height (12.2 m for 12 m); live auto-height `VG360_CAM_<ID>_AUTO_HEIGHT=1` (6 m → 9.8 m on the 10 m demo, rules off until set) |
 | Inference (`vg360-infer`) | done: boxes match the notebook's Python path (onnxruntime + cv2) within 0.125 px, scores within 0.004, PPE probabilities within 0.0005 — both engines |
 
 ### Inference speed (YOLOX-Nano 416², 1280×720 frame, 2 vCPU sandbox)
@@ -238,7 +243,7 @@ it is approved **and** its MCC clears the floor for its severity.
 | RED · in Red-Zone while pipe handling | critical 0.85 | 0.903 | clears floor |
 | EDGE · near Deck-Edge (1 m) | critical 0.85 | 0.899 | clears floor |
 | FALL · fallen person ≥ 2 s | high 0.75 | 0.798 | clears floor |
-| PPE · no hard hat ≥ 2 s | critical 0.85 | 0.820 (synthetic crops) | below floor |
+| PPE · no hard hat ≥ 2 s | critical 0.85 | 0.800 (synthetic crops, model card) | below floor |
 
 **Evidence (vesdb).** With `VG360_VESDB_URL`, `VG360_VESDB_WRITE_TOKEN`, `VG360_VESDB_AUDIT_TOKEN` set,
 each raised alert is an incident (`hazard-detected` + `alert-raised`, frame SHA-256, ruleset / model /

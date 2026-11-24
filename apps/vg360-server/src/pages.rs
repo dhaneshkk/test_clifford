@@ -482,8 +482,9 @@ pub async fn settings(cx: &Cx) -> Result<impl View> {
 pub async fn live(cx: &Cx) -> Result<impl View> {
     let site = context::<Site>(cx);
     let snap = site.live.snapshot();
-    let cams: Vec<(String, String)> = snap["cameras"].as_array().into_iter().flatten()
-        .map(|c| (c["id"].as_str().unwrap_or("").to_string(), c["label"].as_str().unwrap_or("").to_string())).collect();
+    let cams: Vec<(String, String, u64, u64)> = snap["cameras"].as_array().into_iter().flatten()
+        .map(|c| (c["id"].as_str().unwrap_or("").to_string(), c["label"].as_str().unwrap_or("").to_string(),
+                  c["w"].as_u64().unwrap_or(1280), c["h"].as_u64().unwrap_or(720))).collect();
     let sig = site.live.signals.read().unwrap().clone();
     Ok(view! {
         <h1>"Live analytics" <span class="pill" id="live-state">"connecting…"</span></h1>
@@ -494,11 +495,11 @@ pub async fn live(cx: &Cx) -> Result<impl View> {
         }
         <div class="cols wide">
             <section class="livegrid">
-                for (id, label) in &cams {
+                for (id, label, w, h) in &cams {
                     <figure class="card frame live" data-cam=(id.clone())>
                         <div class="stage">
-                            <img class="lv" alt=(label.clone()) src=(format!("/api/live/{id}/frame.jpg"))>
-                            <svg class="ov" viewBox="0 0 1280 720" preserveAspectRatio="none"></svg>
+                            <img class="lv" alt=(label.clone()) src=(format!("/api/live/{id}/frame.jpg")) style=(format!("aspect-ratio: {w} / {h}"))>
+                            <svg class="ov" viewBox=(format!("0 0 {w} {h}")) preserveAspectRatio="none"></svg>
                             <span class="pill livebadge">"LIVE"</span>
                         </div>
                         <figcaption class="caption"><strong>(id.clone())</strong> " " (label.clone()) " · " <span class="stat">"starting…"</span></figcaption>

@@ -74,6 +74,9 @@ pub struct Site {
     /// tamper-evident evidence log (VG360_VESDB_URL / tokens from the environment)
     #[serde(skip)]
     pub vesdb: Option<Vesdb>,
+    /// live camera workers (VG360_CAM_<ID>_URL streams, VG360_DEMO=1 clip)
+    #[serde(skip)]
+    pub live: std::sync::Arc<crate::live::Live>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -232,8 +235,11 @@ impl Site {
             .and_then(|j| TwinState::from_json(j, "saved".into(), "applied from /twin".into()).ok())
             .or_else(|| serde_json::from_str(&read(&format!("{root}/../../testdata/twin/rig_twin.json"))).ok()
                 .and_then(|j| TwinState::from_json(j, "sample".into(), "sample rig twin (testdata)".into()).ok()));
+        let rules_json = read(&std::env::var("VG360_RULES_CONFIG").unwrap_or_else(|_| format!("{root}/../../config/vg360_rules.draft.json")));
+        let validation: Option<Value> = std::fs::read_to_string(format!("{root}/../../config/vg360_rules.validation.json")).ok().and_then(|t| serde_json::from_str(&t).ok());
+        let live = crate::live::start(root, &rules_json, validation.as_ref(), twin.as_ref(), state_dir.clone());
         Site { name: "Desert Rig 7 (sample data)", cams, rules: x.rules, ledger, ledger_check, ledger_source: x.source, report,
-               iogp, twin: RwLock::new(twin), state_dir, vesdb: Vesdb::from_env() }
+               iogp, twin: RwLock::new(twin), state_dir, vesdb: Vesdb::from_env(), live }
     }
 
     pub fn cam(&self, id: &str) -> Option<&Cam> { self.cams.iter().find(|c| c.id.eq_ignore_ascii_case(id)) }

@@ -30,6 +30,7 @@ pub async fn shell(cx: &Cx, slot: Slot<'_>) -> Result<impl View> {
     let site = context::<Site>(cx);
     let nav = [
         (href!(pages::overview).resolve(cx), href!(pages::overview).is_current(cx), "Overview"),
+        (href!(pages::live).resolve(cx), href!(pages::live).is_current(cx), if site.live.is_running() { "Live ●" } else { "Live" }),
         (href!(pages::rules).resolve(cx), href!(pages::rules).is_current(cx), "Rules & evidence"),
         (href!(pages::twin).resolve(cx), href!(pages::twin).is_current(cx), "Site twin"),
         (href!(pages::training).resolve(cx), href!(pages::training).is_current(cx), "Models & training"),
@@ -61,7 +62,7 @@ pub async fn shell(cx: &Cx, slot: Slot<'_>) -> Result<impl View> {
                     </div>
                 </header>
                 <main>(slot)</main>
-                <footer>"Rust · Topcoat 0.12 · inference: ONNX Runtime (CPU) · this console shows sample data from the notebook simulation"</footer>
+                <footer>"Rust · Topcoat 0.12 · inference: " (if cfg!(feature = "ort") { "ONNX Runtime (CPU)" } else { "tract (pure-Rust ONNX, CPU)" }) " · camera cards show sample data from the notebook simulation; the Live page runs the real pipeline"</footer>
             </body>
         </html>
     })

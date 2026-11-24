@@ -77,3 +77,46 @@ mod tests {
         assert!(checked >= 5, "{checked} cameras with calibration points");
     }
 }
+
+/// A twin zone on the deck, as a counter-clockwise floor polygon (metres).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TwinZone { pub id: String, pub name: String, pub polygon: Vec<[f64; 2]>, pub surface_m: f64, pub rules: Vec<String>, pub cameras: Vec<String> }
+
+/// Zones of the twin: circles become 24-gons, rects `[x, y, w, h]` become 4-gons; only rules switched on.
+pub fn zones(twin: &Value) -> Vec<TwinZone> {
+    twin["zones"].as_array().into_iter().flatten().filter_map(|z| {
+        let polygon = match z["shape"].as_str()? {
+            "circle" => {
+                let (c, r) = ([z["center"][0].as_f64()?, z["center"][1].as_f64()?], z["r"].as_f64()?);
+                (0..24).map(|i| { let a = i as f64 * std::f64::consts::TAU / 24.0; [c[0] + r * a.cos(), c[1] + r * a.sin()] }).collect()
+            }
+            "rect" => {
+                let v: Vec<f64> = (0..4).map(|i| z["rect"][i].as_f64()).collect::<Option<_>>()?;
+                vec![[v[0], v[1]], [v[0] + v[2], v[1]], [v[0] + v[2], v[1] + v[3]], [v[0], v[1] + v[3]]]
+            }
+            _ => return None,
+        };
+        let strs = |k: &str, f: &dyn Fn(&Value) -> Option<String>| z[k].as_array().into_iter().flatten().filter_map(f).collect::<Vec<_>>();
+        Some(TwinZone {
+            id: z["id"].as_str()?.into(), name: z["name"].as_str().unwrap_or("").into(), polygon,
+            surface_m: z["surface_m"].as_f64().unwrap_or(0.0),
+            rules: strs("rules", &|r| (r["on"] != false).then(|| r["id"].as_str().map(String::from)).flatten()),
+            cameras: strs("cameras", &|c| c.as_str().map(String::from)),
+        })
+    }).collect()
+}
+
+#[cfg(test)]
+mod zone_tests {
+    #[test]
+    fn twin_zones_are_ccw_polygons() {
+        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../testdata/twin/rig_twin.json")).unwrap()).unwrap();
+        let zs = super::zones(&v);
+        assert_eq!(zs.len(), v["zones"].as_array().unwrap().len());
+        for z in &zs {
+            let a: f64 = (0..z.polygon.len()).map(|i| { let (p, q) = (z.polygon[i], z.polygon[(i + 1) % z.polygon.len()]); p[0] * q[1] - q[0] * p[1] }).sum();
+            assert!(a > 0.0, "{} is not counter-clockwise", z.id);
+        }
+        assert!(zs.iter().any(|z| z.rules.contains(&"lift".to_string())));
+    }
+}

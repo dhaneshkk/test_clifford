@@ -7,7 +7,7 @@ license.workspace = true
 rust-version = "1.99"
 
 [dependencies]
-topcoat = { version = "=0.12.0", features = ["fs"] }
+topcoat = { version = "=0.12.0", features = ["fs", "sse"] }
 tokio = { version = "1", features = ["full"] }
 serde.workspace = true
 serde_json.workspace = true
@@ -15,5 +15,15 @@ vg360-geom = { path = "../../crates/vg360-geom" }
 vg360-guard = { path = "../../crates/vg360-guard" }
 vg360-vision = { path = "../../crates/vg360-vision" }
 vg360-pipeline = { path = "../../crates/vg360-pipeline", default-features = false }
+vg360-infer = { path = "../../crates/vg360-infer", default-features = false }
+vg360-scene = { path = "../../crates/vg360-scene" }
+tokio-stream = { version = "0.1", features = ["sync"] }
+futures-util = "0.3"
 vg360-rules = { path = "../../crates/vg360-rules" }
 vg360-evidence = { path = "../../crates/vg360-evidence" }
+
+[features]
+default = ["tract"]
+# inference engine of the live camera workers
+tract = ["vg360-pipeline/tract"]
+ort = ["vg360-pipeline/ort"]

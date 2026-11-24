@@ -26,13 +26,17 @@ jobs:
           export ORT_DYLIB_PATH=$(python -c "import onnxruntime,glob,os;print(glob.glob(os.path.join(os.path.dirname(onnxruntime.__file__),'capi','libonnxruntime.so*'))[0])")
           cargo test --release -p vg360-infer --features ort -- --nocapture
   server:
-    name: console (Topcoat, Rust ≥ 1.99)
+    name: console (Topcoat, Rust ≥ 1.99) + live demo end to end
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update -q && sudo apt-get install -yq ffmpeg
+      - run: ./scripts/fetch_models.sh
       - run: cargo build --release -p vg360-server
+      # VG360_DEMO=1 console: live worker, SSE, snapshots, signals, streaming /v1/chat/completions
+      - run: cargo test --release -p vg360-server -- --nocapture
   provenance:
     name: evidence end to end (vesdb + witness + vesdb-verify)
     runs-on: ubuntu-latest

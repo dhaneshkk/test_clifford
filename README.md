@@ -33,7 +33,7 @@ lean/            CGA.lean — theorems behind the closed forms (not yet machine-
 testdata/        notebook exports (rules, ledger) and frames used by the golden tests
 ```
 
-## Status — Phases 0–3 + integration (Rig Twin, Rule Studio, iogp-editor, vesdb)
+## Status — Phases 0–4 + integration (Rig Twin, Rule Studio, iogp-editor, vesdb)
 
 | Area | State |
 |---|---|
@@ -43,7 +43,8 @@ testdata/        notebook exports (rules, ledger) and frames used by the golden 
 | OpenCV removal | done for camera_guard and calibration / lens code |
 | Camera guard on real frames | known +70 px / −25 px / 3.2° bump recovered as dx 5.47 %, dy −1.98 %, −3.22° |
 | Deck calibration | 8 points, ±0.3 px noise → f, height, pitch, yaw, roll; 0.23 px / 0.012 m RMS |
-| Console | 6 pages on sample data; CAM-05 is measured live by the guard at start-up |
+| Console | 7 pages; camera cards on sample data (CAM-05 measured by the guard at start-up); `/live` runs the real pipeline |
+| Live console (Phase 4) | one worker thread per stream → SSE (`frame` ≤ 4 Hz/camera, `alert` immediately); latest-frame JPEG; alert snapshots saved as `state/evidence/<incident>.jpg` whose SHA-256 is in the alert and its vesdb incident; site signals (crane load, pipe handling) gate the rules; streaming `/v1/chat/completions` |
 | Live camera guard + compensation (`vg360-pipeline`) | rig clip knocked mid-run by +32 px / −14 px / 1.5°: analytics continue (mode `Compensated`), people stay on their deck spots (mean error 0.24 m vs 0.85 m uncompensated, 19/21 within 0.5 m), all 4 track ids survive the knock; a 9° / 180 px knock pauses analytics; a covered lens pauses them after the 5 s hold |
 | Inference (`vg360-infer`) | done: boxes match the notebook's Python path (onnxruntime + cv2) within 0.125 px, scores within 0.004, PPE probabilities within 0.0005 — both engines |
 
@@ -86,6 +87,27 @@ cargo run -p vg360-server --release                                  # needs Rus
 ```
 
 Cameras read their stream URL from `VG360_CAM_<ID>_URL` (e.g. `VG360_CAM_CAM_05_URL`).
+
+### Live analytics
+
+```sh
+VG360_DEMO=1 cargo run -p vg360-server --release      # replay testdata/clip/clip.mp4 as camera DEMO
+# → http://127.0.0.1:3000/live
+VG360_CAM_C5_URL='rtsp://…' cargo run -p vg360-server --release --features ort   # a Rig Twin camera
+```
+
+* A worker starts for every camera of the applied Rig Twin whose `VG360_CAM_<ID>_URL` is set. It uses
+  that camera's twin calibration and the twin zones it watches (twin rule `red` → exclusion zone,
+  `height` → deck edge, `lift` → load drop zone). `VG360_DEMO=1` adds the simulated clip; `VG360_TILES`
+  (default 1) and `VG360_FPS` (default 10) trade recall for CPU.
+* `GET /api/live` (state) · `GET /api/live/events` (SSE: `hello`, `frame`, `alert`, `signals`) ·
+  `GET /api/live/{cam}/frame.jpg` · `GET /api/evidence/{incident}/snapshot.jpg` ·
+  `POST /api/signals {"suspended_load":true,"active":["pipe-handling"]}`.
+* Rules still go through the approval and MCC gates: with the draft config every alert is shadow
+  (logged, not sounded). Incidents go to vesdb when `VG360_VESDB_*` is set; the snapshot proves its frame
+  with `vesdb-verify bundle --file-hash snapshot.jpg=<event id>:frame_sha256`.
+* tract (default) runs ≈ 5 fps on one tile on 2 vCPU; use `--features ort` in production.
+
 **Never commit stream URLs, credentials, or reference / alert snapshots** — they are git-ignored.
 
 ### API (OpenAI-compatible)
@@ -93,7 +115,12 @@ Cameras read their stream URL from `VG360_CAM_<ID>_URL` (e.g. `VG360_CAM_CAM_05_
 ```sh
 curl localhost:3000/v1/chat/completions -H 'content-type: application/json' \
   -d '{"model":"vg360-ops","messages":[{"role":"user","content":"which camera moved?"}]}'
+curl -N localhost:3000/v1/chat/completions -H 'content-type: application/json' \
+  -d '{"model":"vg360-ops","stream":true,"messages":[{"role":"user","content":"what is live now?"}]}'
 ```
+
+`"stream": true` returns OpenAI `chat.completion.chunk` events ending in `data: [DONE]`, so the
+OpenAI SDKs' streaming mode works unchanged.
 
 `/v1/models`, `/v1/rules`, `/v1/ledger`, `/v1/cameras` are plain JSON. The `vg360-ops` assistant
 answers deterministically from site state (no LLM), so every number it gives is auditable.
@@ -107,7 +134,7 @@ answers deterministically from site state (no LLM), so every number it gives is 
    the P2 floor).
 3. ~~Live camera guard + shift compensation~~ done. Limits (≤ 8 % shift, ≤ 5° rotation, ≤ 6 % zoom,
    ≥ 60 matched points) are configurable per camera (`CompLimits`).
-4. Live console: per-camera workers, SSE updates, snapshots, streaming chat completions.
+4. ~~Live console~~ done: per-camera workers, SSE updates, snapshots, site signals, streaming chat completions.
 5. Training-only single-cell notebook (SAM, MCC, ONNX export, golden vectors), Lean build in CI.
 
 ## Caveats

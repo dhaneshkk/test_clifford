@@ -4,8 +4,10 @@
 //! `/` overview · `/cameras/{id}` camera detail + camera guard · `/rules` MCC gates + ledger ·
 //! `/twin` site plan · `/training` models · `/settings` cameras.
 //! API: `/v1/models`, `/v1/chat/completions` (OpenAI-compatible), `/v1/rules`, `/v1/ledger`, `/v1/cameras`,
-//! `/api/twin` (GET / POST from the Rig Twin editor), `/api/rule-studio`, `/api/evidence`.
+//! `/api/twin` (GET / POST from the Rig Twin editor), `/api/rule-studio`, `/api/evidence`,
+//! live: `/api/live`, `/api/live/events` (SSE), `/cameras/{id}/live.jpg`, `/api/evidence/{incident}.jpg`, `POST /api/signals`.
 mod api;
+mod live;
 mod pages;
 mod state;
 mod ui;
@@ -18,6 +20,7 @@ pub fn router(root: &str) -> Router {
         .layout(ui::shell)
         .page(pages::overview)
         .page(pages::camera)
+        .page(pages::live)
         .page(pages::rules)
         .page(pages::twin)
         .page(pages::training)
@@ -31,6 +34,11 @@ pub fn router(root: &str) -> Router {
         .route(api::twin_apply)
         .route(api::rule_studio)
         .route(api::evidence)
+        .route(api::live_state)
+        .route(api::live_events)
+        .route(api::live_jpeg)
+        .route(api::live_evidence_jpeg)
+        .route(api::signals)
         .public_dir(format!("{root}/public"))
         .build()
 }

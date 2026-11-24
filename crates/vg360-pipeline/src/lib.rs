@@ -61,10 +61,12 @@ pub struct WorkerCfg {
     pub limits: CompLimits,
     /// rule engine drop-out tolerance (s)
     pub rule_gap_s: f64,
+    /// attach a JPEG of the live frame to every n-th result (0 = never), for live views
+    pub snapshot_every: usize,
 }
 
 impl Default for WorkerCfg {
-    fn default() -> Self { Self { guard_every: 3, tiles: 3, limits: CompLimits::default(), rule_gap_s: 0.5 } }
+    fn default() -> Self { Self { guard_every: 3, tiles: 3, limits: CompLimits::default(), rule_gap_s: 0.5, snapshot_every: 0 } }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -83,6 +85,9 @@ pub struct FrameResult {
     pub helmet: Vec<Option<f64>>,
     pub alerts: Vec<Alarm>,
     pub ms: f64,
+    /// live-view JPEG (see `WorkerCfg::snapshot_every`)
+    #[serde(skip)]
+    pub jpeg: Option<Vec<u8>>,
 }
 
 /// One raised or cleared rule alert, with whether it sounds and where its evidence went.
@@ -96,6 +101,14 @@ pub struct Alarm {
     pub mode: Mode,
     /// vesdb event ids of the incident (hazard-detected, alert-raised), or "spooled"
     pub evidence: Vec<String>,
+    /// incident id written to the evidence log
+    pub incident: Option<String>,
+    /// SHA-256 of `snapshot` (also in the incident's `hazard-detected` event)
+    pub snapshot_sha256: Option<String>,
+    /// the frame the alert was raised on, as JPEG: keep it next to the evidence bundle —
+    /// `vesdb-verify --file-hash snapshot.jpg=<event id>:frame_sha256` proves it is the same frame
+    #[serde(skip)]
+    pub snapshot: Option<Vec<u8>>,
 }
 
 /// Rules and their provenance, shared by every camera worker on the site.
@@ -176,9 +189,13 @@ impl CameraWorker {
         }
     }
 
+    fn incident_id(&self, e: &AlertEvent) -> String {
+        format!("{}-{}-{}-{}", self.id, e.rule, track_of(&e.subject).replace('/', "_"), (e.t * 1000.0).round() as i64)
+    }
+
     fn record_incident(&self, e: &AlertEvent, rec: Option<&Rec>, armed: bool, frame_sha256: &str) -> Vec<String> {
         let Some(v) = &self.evidence else { return vec![] };
-        let id = format!("{}-{}-{}-{}", self.id, e.rule, track_of(&e.subject).replace('/', "_"), (e.t * 1000.0).round() as i64);
+        let id = self.incident_id(e);
         let hazard = json!({ "camera": self.id, "rule": e.rule, "subject": e.subject, "t": e.t,
             "box": rec.map(|r| r.bbox), "foot_m": rec.map(|r| r.foot), "head_z_m": rec.map(|r| r.head_z), "tilt_deg": rec.map(|r| r.tilt),
             "analytics": self.mode, "guard": self.guard.status, "frame_sha256": frame_sha256 });
@@ -240,7 +257,7 @@ impl CameraWorker {
         self.frame_no += 1;
         let (pose, inliers, ref_box) = self.last.as_ref().map_or((None, 0, None), |m| (m.ok.then_some(m.pose), m.inliers, m.ok.then_some(m.boxq)));
         let mut res = FrameResult { camera: self.id.clone(), t, status: self.guard.status, mode: self.mode, pose, inliers, ref_box,
-                                    boxes: vec![], recs: vec![], helmet: vec![], alerts: vec![], ms: 0.0 };
+                                    boxes: vec![], recs: vec![], helmet: vec![], alerts: vec![], ms: 0.0, jpeg: None };
         if self.mode != Mode::Paused {
             let gray = frame.to_gray();
             let boxes = self.det.detect_tiled(&gray, self.cfg.tiles, 0.25)?;
@@ -251,14 +268,19 @@ impl CameraWorker {
                 Person { id: r.track.to_string(), clear: &r.zones, down: r.state.down, p_helmet: *h })).collect();
             let events = vg360_rules::step(&mut self.engine, &self.rules.site, t, Some(&self.id), sig, &people);
             if !events.is_empty() {
-                let frame_sha256 = sha256_hex(&frame.data);
+                // the evidence frame is the JPEG that is kept, so its hash can be checked later
+                let jpeg = frame.encode_jpeg(90);
+                let frame_sha256 = sha256_hex(&jpeg);
                 for e in events {
                     let track = track_of(&e.subject).to_string();
                     let armed = self.rules.armed.contains(&e.rule);
                     let rec = recs.iter().flatten().find(|r| r.track.to_string() == track);
-                    let evidence = if e.kind == "raised" { self.record_incident(&e, rec, armed, &frame_sha256) } else { vec![] };
-                    if e.kind == "raised" { self.scene.log_rule(t, &e.rule, &track); }
-                    res.alerts.push(Alarm { event: e, track, armed, mode: self.mode, evidence });
+                    let raised = e.kind == "raised";
+                    let evidence = if raised { self.record_incident(&e, rec, armed, &frame_sha256) } else { vec![] };
+                    if raised { self.scene.log_rule(t, &e.rule, &track); }
+                    let incident = raised.then(|| self.incident_id(&e));
+                    res.alerts.push(Alarm { event: e, track, armed, mode: self.mode, evidence, incident,
+                        snapshot_sha256: raised.then(|| frame_sha256.clone()), snapshot: raised.then(|| jpeg.clone()) });
                 }
             }
             res.boxes = boxes;
@@ -266,6 +288,8 @@ impl CameraWorker {
             res.helmet = helmet;
         }
         res.ms = t0.elapsed().as_secs_f64() * 1e3;
+        let n = self.cfg.snapshot_every;
+        if n > 0 && (self.frame_no - 1) % n == 0 { res.jpeg = Some(frame.encode_jpeg(75)); }
         Ok(res)
     }
 }

@@ -42,7 +42,14 @@ pub async fn overview(cx: &Cx) -> Result<impl View> {
     let armed = site.iogp.armed();
     let feed: Vec<_> = site.ledger.entries.iter().rev().take(12).collect();
     let counts = alert_counts(site);
+    let lsnap = site.live.snapshot();
+    let live_cams = lsnap["cameras"].as_array().map_or(0, |c| c.len());
+    let live_alerts = lsnap["alerts"].as_array().map_or(0, |a| a.len());
     Ok(view! {
+        if live_cams > 0 {
+            <a class="banner live" href=(href!(live))><strong>"● " (live_cams) " live stream(s)"</strong>
+                " — " (live_alerts) " alert(s) since start (armed sound, shadow logged)." <span class="go">"Open live console →"</span></a>
+        }
         <section class="kpis">
             <div class="kpi"><b>(site.cams.len())</b><span>"cameras"</span><em>"5 rectilinear · 1 fisheye"</em></div>
             <div class=(class!("kpi", "bad" if !alarms.is_empty()))>
@@ -426,5 +433,52 @@ pub async fn settings(cx: &Cx) -> Result<impl View> {
                 </dl>
             </aside>
         </div>
+    })
+}
+
+/// Live console: every running camera worker, its latest frame and detections, and the live alert feed
+/// (server-sent events from `/api/live/events`; see `public/live.js`).
+#[page("/live")]
+pub async fn live(cx: &Cx) -> Result<impl View> {
+    let site = context::<Site>(cx);
+    let snap = site.live.snapshot();
+    let cams: Vec<(String, String)> = snap["cameras"].as_array().into_iter().flatten()
+        .map(|c| (c["id"].as_str().unwrap_or("").to_string(), c["label"].as_str().unwrap_or("").to_string())).collect();
+    let sig = site.live.signals.read().unwrap().clone();
+    Ok(view! {
+        <h1>"Live analytics" <span class="pill" id="live-state">"connecting…"</span></h1>
+        if cams.is_empty() {
+            <section class="card"><p class="note">"No camera streams are running. Set "
+                <code>"VG360_CAM_<ID>_URL"</code> " for cameras of the applied Rig Twin (RTSP, credentials stay in the environment), or "
+                <code>"VG360_DEMO=1"</code> " to replay the simulated rig clip as a camera."</p></section>
+        }
+        <div class="cols wide">
+            <section class="livegrid">
+                for (id, label) in &cams {
+                    <figure class="card frame live" data-cam=(id.clone())>
+                        <div class="stage">
+                            <img class="lv" alt=(label.clone()) src=(format!("/api/live/{id}/frame.jpg"))>
+                            <svg class="ov" viewBox="0 0 1280 720" preserveAspectRatio="none"></svg>
+                            <span class="pill livebadge">"LIVE"</span>
+                        </div>
+                        <figcaption class="caption"><strong>(id.clone())</strong> " " (label.clone()) " · " <span class="stat">"starting…"</span></figcaption>
+                    </figure>
+                }
+            </section>
+            <aside class="stack">
+                <section class="card">
+                    <h3>"Site signals" <small>"from the rig control system — gate the rules"</small></h3>
+                    <form id="signals" class="sig">
+                        <label><input type="checkbox" name="suspended_load" checked=(sig.suspended_load)>" suspended load (crane)"</label>
+                        <label><input type="checkbox" name="pipe-handling" checked=(sig.active.iter().any(|a| a == "pipe-handling"))>" pipe handling"</label>
+                    </form>
+                </section>
+                <section class="card feed">
+                    <h3>"Live alerts" <small>"armed sound · shadow are logged only"</small></h3>
+                    <ol id="live-alerts"></ol>
+                </section>
+            </aside>
+        </div>
+        <script src="/live.js"></script>
     })
 }

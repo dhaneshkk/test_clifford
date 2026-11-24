@@ -2300,6 +2300,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-stream"
+version = "0.1.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3d06f0b082ba57c26b79407372e57cf2a1e28124f78e9479fe80322cf53420b"
+dependencies = [
+ "futures-core",
+ "pin-project-lite",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "tokio-tungstenite"
 version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3196,15 +3208,19 @@ dependencies = [
 name = "vg360-server"
 version = "0.1.0"
 dependencies = [
+ "futures-util",
  "serde",
  "serde_json",
  "tokio",
+ "tokio-stream",
  "topcoat",
  "vg360-evidence",
  "vg360-geom",
  "vg360-guard",
+ "vg360-infer",
  "vg360-pipeline",
  "vg360-rules",
+ "vg360-scene",
  "vg360-vision",
 ]
 

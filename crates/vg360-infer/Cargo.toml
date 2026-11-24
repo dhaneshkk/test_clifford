@@ -17,6 +17,8 @@ ort = ["dep:ort"]
 vg360-vision = { path = "../vg360-vision" }
 vg360-geom = { path = "../vg360-geom" }
 serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
 tract-onnx = { version = "0.21", optional = true }
 ort = { version = "=2.0.0-rc.15", optional = true, default-features = false, features = ["load-dynamic", "ndarray"] }
 

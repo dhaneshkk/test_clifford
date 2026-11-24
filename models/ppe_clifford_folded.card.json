@@ -1,0 +1,93 @@
+{
+ "model": "ppe_clifford_folded.onnx",
+ "task": "helmet / no-helmet on 48\u00d748 gray head crops (input: crop, output: logits [no_helmet, helmet])",
+ "sha256": "8b16c5506ead9fd58d833dd45666e2f812fb1d50c964b5c11ff9484eb74ab63b",
+ "created_utc": "2026-11-24T04:38:12Z",
+ "architecture": "Standardize \u2192 Lift [I, \u2202xI, \u2202yI, 0] \u2192 4\u00d7 CliffordConv2d Cl(2,0) (folded to Conv2d) + MVGate \u2192 invariant readout",
+ "training": {
+  "optimizer": "SAM(SGD momentum 0.9, wd 5e-4)",
+  "rho": 0.05,
+  "lr": 0.05,
+  "epochs": 14,
+  "batch": 128,
+  "label_smoothing": 0.05,
+  "seed": 7,
+  "selection": "best val MCC",
+  "torch": "2.15.0+cu132",
+  "onnx_opset": 17
+ },
+ "data": {
+  "source": "synthetic (smoke test)",
+  "n": 5000,
+  "n_train": 2999,
+  "n_val": 999,
+  "n_test": 1002,
+  "helmet_fraction": 0.5006
+ },
+ "metrics": {
+  "test_mcc": 0.8003854804065753,
+  "test_mcc_ci95": [
+   0.7636562093187603,
+   0.8375450130753987
+  ],
+  "confusion[[tn,fp],[fn,tp]]": [
+   [
+    467,
+    33
+   ],
+   [
+    68,
+    434
+   ]
+  ],
+  "val_mcc": 0.8035368649792641,
+  "best_epoch": 13,
+  "sharpness": {
+   "rho": 0.05,
+   "test_loss": 0.27804556488990784,
+   "test_loss_at_sam_point": 0.3070203363895416,
+   "increase": 0.02897477149963379
+  }
+ },
+ "baseline_cnn": {
+  "test_mcc": 0.2264239167645086,
+  "test_mcc_ci95": [
+   0.16931500860342302,
+   0.28651031985888015
+  ],
+  "conv_params": 18828,
+  "sharpness": {
+   "rho": 0.05,
+   "test_loss": 0.6613220572471619,
+   "test_loss_at_sam_point": 0.6712841987609863,
+   "increase": 0.009962141513824463
+  }
+ },
+ "conv_params": {
+  "clifford_trainable": 18936,
+  "folded_real": 75744
+ },
+ "parity": {
+  "max_abs_torch_vs_folded": 0.0,
+  "max_abs_torch_vs_onnxruntime": 1.8835067749023438e-05,
+  "onnx_ms_per_8_crops": 3.836
+ },
+ "gate": {
+  "rule": "PPE",
+  "severity": "critical",
+  "mcc_floor": 0.85,
+  "meets_floor": false,
+  "note": "the rule is armed only when also approved in iogp-editor; synthetic data never arms it"
+ },
+ "lean": [
+  "VG360.Clifford.gp_assoc",
+  "VG360.Clifford.idxTable_eq",
+  "VG360.Clifford.sgnTable_eq",
+  "VG360.Train.fold_correct",
+  "VG360.Train.fold_conv",
+  "VG360.Train.mcc_abs_le_one",
+  "VG360.Train.mcc_swap",
+  "VG360.Train.sam_eps_maximizes"
+ ],
+ "golden": "testdata/golden/ppe.json"
+}

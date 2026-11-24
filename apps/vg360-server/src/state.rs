@@ -77,6 +77,9 @@ pub struct Site {
     /// live camera workers (VG360_CAM_<ID>_URL streams, VG360_DEMO=1 clip)
     #[serde(skip)]
     pub live: std::sync::Arc<crate::live::Live>,
+    /// the PPE model's card from the training notebook, verified against the ONNX file
+    #[serde(skip)]
+    pub ppe_card: Result<vg360_infer::card::Card, String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -163,15 +166,22 @@ fn load_iogp(root: &str, legacy: &BTreeMap<String, RuleRecord>) -> IogpRules {
     let dep = Deployed::load(&json).unwrap_or_else(|e| panic!("{path}: {e}"));
     let val: Value = serde_json::from_str(&read(&format!("{root}/../../config/vg360_rules.validation.json"))).unwrap_or_default();
     let raw: Value = serde_json::from_str(&json).unwrap();
+    // PPE needs imagery: its confusion matrix comes from the verified model card of the training notebook
+    let card = vg360_infer::card::verify(format!("{root}/../../models/ppe_clifford_folded.onnx")).ok();
     let rules = raw["rules"].as_array().unwrap().iter().map(|r| {
         let id = r["id"].as_str().unwrap_or("").to_string();
         let sev = r["alert"]["severity"].as_str().map(String::from);
         let (tier, floor) = vg360_rules::tier(sev.as_deref());
         let v = &val["rules"][&id];
-        // PPE needs imagery: it is scored on the PPE crop test set (notebook §7)
-        let (cm, validated_on) = match v["cm"].as_array() {
-            Some(a) => (Some([0, 1, 2, 3].map(|i| a[i].as_u64().unwrap_or(0))), val["validated_on"].as_str().unwrap_or("").to_string()),
-            None => (legacy.get(&id.to_lowercase()).and_then(|l| l.cm), legacy.get(&id.to_lowercase()).map_or(String::new(), |l| l.validated_on.clone())),
+        let card_cm = (id == "PPE").then_some(card.as_ref()).flatten().and_then(|c| {
+            let m = c.json.pointer("/metrics/confusion[[tn,fp],[fn,tp]]")?;
+            let g = |i: usize, j: usize| m[i][j].as_u64();
+            Some(([g(1, 1)?, g(0, 1)?, g(1, 0)?, g(0, 0)?], format!("PPE crop test set: {} (model card {}…)", c.data_source(), &c.sha256()[..12])))
+        });
+        let (cm, validated_on) = match (v["cm"].as_array(), card_cm) {
+            (Some(a), _) => (Some([0, 1, 2, 3].map(|i| a[i].as_u64().unwrap_or(0))), val["validated_on"].as_str().unwrap_or("").to_string()),
+            (None, Some((cm, on))) => (Some(cm), on),
+            (None, None) => (legacy.get(&id.to_lowercase()).and_then(|l| l.cm), legacy.get(&id.to_lowercase()).map_or(String::new(), |l| l.validated_on.clone())),
         };
         let mcc = cm.and_then(vg360_rules::validate::mcc);
         let approved_by = r["version"]["approved_by"].as_str().map(String::from);
@@ -239,7 +249,8 @@ impl Site {
         let validation: Option<Value> = std::fs::read_to_string(format!("{root}/../../config/vg360_rules.validation.json")).ok().and_then(|t| serde_json::from_str(&t).ok());
         let live = crate::live::start(root, &rules_json, validation.as_ref(), twin.as_ref(), state_dir.clone());
         Site { name: "Desert Rig 7 (sample data)", cams, rules: x.rules, ledger, ledger_check, ledger_source: x.source, report,
-               iogp, twin: RwLock::new(twin), state_dir, vesdb: Vesdb::from_env(), live }
+               iogp, twin: RwLock::new(twin), state_dir, vesdb: Vesdb::from_env(), live,
+               ppe_card: vg360_infer::card::verify(format!("{root}/../../models/ppe_clifford_folded.onnx")) }
     }
 
     pub fn cam(&self, id: &str) -> Option<&Cam> { self.cams.iter().find(|c| c.id.eq_ignore_ascii_case(id)) }

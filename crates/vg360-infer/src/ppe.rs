@@ -39,10 +39,15 @@ impl Ppe {
         boxes.iter().map(|b| {
             let Some((x, y, w, h)) = head_crop(g, b) else { return Ok(None) };
             let crop: Vec<f32> = resize_linear(g, x, y, w, h, self.size, self.size).into_iter().map(|v| v / 255.0).collect();
-            let lg = self.engine.run(crop, [1, 1, self.size, self.size])?;
-            let m = lg[0].max(lg[1]);
-            let (e0, e1) = (((lg[0] - m) as f64).exp(), ((lg[1] - m) as f64).exp());
-            Ok(Some(e1 / (e0 + e1)))
+            Ok(Some(self.p_helmet(crop)?))
         }).collect()
+    }
+
+    /// P(helmet) of one `size × size` crop with values in [0, 1].
+    pub fn p_helmet(&self, crop: Vec<f32>) -> Result<f64> {
+        let lg = self.engine.run(crop, [1, 1, self.size, self.size])?;
+        let m = lg[0].max(lg[1]);
+        let (e0, e1) = (((lg[0] - m) as f64).exp(), ((lg[1] - m) as f64).exp());
+        Ok(e1 / (e0 + e1))
     }
 }

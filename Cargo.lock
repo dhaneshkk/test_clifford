@@ -3163,6 +3163,7 @@ dependencies = [
  "ort",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tract-onnx",
  "vg360-geom",
  "vg360-vision",

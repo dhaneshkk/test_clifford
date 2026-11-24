@@ -1,0 +1,129 @@
+{
+ "config": {
+  "repo_url": "https://github.com/dhaneshkk/test_clifford",
+  "clone_repo": false,
+  "write_repo": true,
+  "ppe_dir": "",
+  "voc_dir": "",
+  "n_synth": 5000,
+  "size": 48,
+  "epochs": 14,
+  "batch": 128,
+  "lr": 0.05,
+  "sam_rho": 0.05,
+  "label_smoothing": 0.05,
+  "baseline": true,
+  "bootstrap": 2000,
+  "seed": 7,
+  "severity": "critical",
+  "run_lean": false,
+  "console_url": "",
+  "footage": "",
+  "footage_crop": "",
+  "footage_fps": 1.0,
+  "detector_url": "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_nano.onnx"
+ },
+ "fast": false,
+ "lean": "checked in CI (lean job); CFG.run_lean=True to run here",
+ "data": {
+  "source": "synthetic (smoke test)",
+  "n": 5000,
+  "n_train": 2999,
+  "n_val": 999,
+  "n_test": 1002,
+  "helmet_fraction": 0.5006
+ },
+ "clifford": {
+  "val_mcc": 0.8035368649792641,
+  "best_epoch": 13,
+  "val_mcc_history": [
+   0.0,
+   0.0317,
+   0.2092,
+   0.2999,
+   0.2801,
+   0.5524,
+   0.6938,
+   0.7277,
+   0.7377,
+   0.7252,
+   0.7671,
+   0.7877,
+   0.7878,
+   0.8035
+  ],
+  "train_s": 566.2,
+  "test_mcc": 0.8003854804065753,
+  "test_mcc_ci95": [
+   0.7636562093187603,
+   0.8375450130753987
+  ],
+  "confusion[[tn,fp],[fn,tp]]": [
+   [
+    467,
+    33
+   ],
+   [
+    68,
+    434
+   ]
+  ],
+  "conv_params": 18936,
+  "sharpness": {
+   "rho": 0.05,
+   "test_loss": 0.27804556488990784,
+   "test_loss_at_sam_point": 0.3070203363895416,
+   "increase": 0.02897477149963379
+  }
+ },
+ "baseline_cnn": {
+  "val_mcc": 0.23579113148746889,
+  "best_epoch": 10,
+  "val_mcc_history": [
+   0.0,
+   0.0,
+   0.1647,
+   0.0,
+   0.2155,
+   0.1913,
+   0.1574,
+   0.1753,
+   0.2156,
+   0.2325,
+   0.2358,
+   0.1973,
+   0.2132,
+   0.2193
+  ],
+  "train_s": 267.5,
+  "test_mcc": 0.2264239167645086,
+  "test_mcc_ci95": [
+   0.16931500860342302,
+   0.28651031985888015
+  ],
+  "confusion[[tn,fp],[fn,tp]]": [
+   [
+    264,
+    236
+   ],
+   [
+    153,
+    349
+   ]
+  ],
+  "conv_params": 18828,
+  "sharpness": {
+   "rho": 0.05,
+   "test_loss": 0.6613220572471619,
+   "test_loss_at_sam_point": 0.6712841987609863,
+   "increase": 0.009962141513824463
+  }
+ },
+ "export": {
+  "sha256": "8b16c5506ead9fd58d833dd45666e2f812fb1d50c964b5c11ff9484eb74ab63b",
+  "max_abs_torch_vs_folded": 0.0,
+  "max_abs_torch_vs_onnxruntime": 1.8835067749023438e-05,
+  "onnx_ms_per_8_crops": 3.836,
+  "out": "/home/claude/test_clifford"
+ }
+}

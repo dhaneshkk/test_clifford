@@ -28,12 +28,14 @@ scripts/         fetch_models.sh, export_golden.py, export_golden_scene.py (note
 config/          vg360_site_catalog.json (iogp-editor vocabulary for this rig), vg360_rules.ace (the 5 rules in
                  controlled English), vg360_rules.draft.json (iogp-editor export, NOT approved),
                  vg360_rules.validation.json (MCC per rule)
-notebooks/       vg360_clifford_safety_cpu.ipynb (single cell; to be split into training-only in Phase 5)
-lean/            CGA.lean — theorems behind the closed forms (not yet machine-checked in CI)
+notebooks/       vg360_train_cpu.ipynb — training only (single cell): PPE model, SAM, MCC, ONNX, card, golden, footage audit
+                 vg360_clifford_safety_cpu.ipynb — the original research notebook (simulation, scene goldens)
+lean/            Lake project (Mathlib v4.36.0), built in CI: VG360/CGA (zone / ray closed forms),
+                 VG360/Clifford (Cl(2,0) table), VG360/Train (conv folding, MCC bounds, SAM step)
 testdata/        notebook exports (rules, ledger) and frames used by the golden tests
 ```
 
-## Status — Phases 0–4 + integration (Rig Twin, Rule Studio, iogp-editor, vesdb)
+## Status — Phases 0–5 + integration (Rig Twin, Rule Studio, iogp-editor, vesdb)
 
 | Area | State |
 |---|---|
@@ -135,13 +137,57 @@ answers deterministically from site state (no LLM), so every number it gives is 
 3. ~~Live camera guard + shift compensation~~ done. Limits (≤ 8 % shift, ≤ 5° rotation, ≤ 6 % zoom,
    ≥ 60 matched points) are configurable per camera (`CompLimits`).
 4. ~~Live console~~ done: per-camera workers, SSE updates, snapshots, site signals, streaming chat completions.
-5. Training-only single-cell notebook (SAM, MCC, ONNX export, golden vectors), Lean build in CI.
+5. ~~Training notebook + Lean in CI~~ done (see *Training* below).
+6. Next: fine-tune the detector on labelled rig footage (see *Real footage*).
+
+## Training (Phase 5)
+
+`notebooks/vg360_train_cpu.ipynb` is one Colab cell and the only place models are trained:
+
+| step | what it does |
+|---|---|
+| data | `CFG.ppe_dir` (helmet/ no_helmet/ crops) or `CFG.voc_dir` (e.g. SHWD); otherwise 5 000 synthetic crops, a smoke test only. Split 60/20/20, stratified |
+| train | Clifford-conv Cl(2,0) net **and** a plain CNN with the same number of conv weights, both with SAM (ρ 0.05, SGD), best epoch picked on val MCC |
+| evaluate | test MCC with a bootstrap 95 % CI; sharpness = test-loss increase at the SAM point |
+| export | fold → ONNX (opset 17), torch ≡ folded ≡ onnxruntime checks, `models/ppe_clifford_folded.card.json` (SHA-256, metrics, data, SAM settings, MCC gate), `testdata/golden/ppe.json` |
+| footage | `VG360_FOOTAGE=clip.mp4` (+ `CFG.footage_crop` for VMS screen recordings): detector + PPE audit, contact sheet, crops and frames for labelling (in `footage_audit/`, git-ignored) |
+
+The Rust side checks the result. `vg360_infer::card::verify` refuses a PPE model whose SHA-256 doesn't
+match its card: the console disables PPE and says so, and `/training` shows the card. The golden test
+runs the 16 notebook crops through tract (and ONNX Runtime): max |ΔP| 2e-6. With vesdb configured, a
+`model-deployed` event records the card.
+
+Current model (synthetic crops, n_test 1002): **Clifford MCC 0.800 [0.764, 0.838]** vs **plain CNN
+0.226 [0.169, 0.287]** with the same recipe. The CNN's hyper-parameters were not tuned separately, so
+this shows the recipe suits the Clifford net, not that Clifford conv wins in general. Below the P1 floor
+(0.85), and synthetic, so the PPE rule stays shadow.
+
+**Lean (CI job `lean`).** `lake build` in `lean/` with the Mathlib cache, and no `sorry`/`admit`.
+`Clifford` proves the notebook's product table is Cl(2,0)'s geometric product (`decide`; the notebook
+asserts its table equals the Lean one). `Train` proves the folded conv computes the trained Clifford
+layer (`fold_correct`, `fold_conv`); that MCC is 1 for a perfect classifier, −1 for an inverted one,
+unchanged when the classes are swapped, and always in [−1, 1]; and that SAM's `ε = ρg/‖g‖` has norm ρ and
+maximises the linearised loss over the ρ-ball (`sam_eps_maximizes`).
+
+## Real footage (RIG 2004 drill floor)
+
+76 s screen recording of a wide-angle overhead drill-floor camera at night (1024×576 stream, 2–6 fps).
+The footage stays out of the repository. Audit at 1 fps, 75 usable frames:
+
+* **Detector (COCO YOLOX-Nano) is the bottleneck.** At the runtime threshold (0.35) it finds one of the
+  two or three workers, and only from ~17 s, when he is more upright. Crouching or top-down workers
+  score 0.10–0.20, below yellow machinery at up to 0.46. 6 of the 66 detections at 0.35 are machinery.
+  Lowering the threshold does not fix it.
+* **PPE on the detected worker** (helmet, 60 frames): P(helmet) 0.69–0.72, all correct. The machinery
+  boxes score 0.18–0.37, so they would raise false no-helmet alerts. The pipeline needs a detector that
+  knows this camera.
+* Next: label person boxes on rig frames (CVAT, YOLO format; `footage_audit/frames`) and fine-tune
+  YOLOX-Nano with SAM in the notebook. Real helmet / no-helmet crops then replace the synthetic set.
 
 ## Caveats
 
-Rule MCCs come from the notebook's simulated site; PPE MCC (0.82) is on synthetic crops; the
-Clifford-conv PPE model has not yet been compared against a plain CNN; Lean proofs are not yet
-machine-checked. Console thumbnails CAM-01…04 are frames of one simulated feed.
+Rule MCCs come from the notebook's simulated site; PPE MCC (0.800) is on synthetic crops; the
+COCO detector misses most workers on real overhead rig footage (see *Real footage*). Console thumbnails CAM-01…04 are frames of one simulated feed.
 
 ## Integration: Rig Twin · Rule Studio · iogp-editor · vesdb
 

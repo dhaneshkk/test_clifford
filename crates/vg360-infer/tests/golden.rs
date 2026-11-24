@@ -98,3 +98,48 @@ fn onnxruntime_engine_matches_python_within_1px() {
     }
     eprintln!("engine {} · single {t1:?} · full frame + 3×3 tiles {t2:?}", y.engine_name());
 }
+
+// ───────────────────────────── PPE model vs the training notebook
+
+#[derive(Deserialize)]
+struct PpeCrop { label: u8, u8: Vec<u8>, p_helmet: f64 }
+#[derive(Deserialize)]
+struct PpeGolden { model_sha256: String, size: usize, crops: Vec<PpeCrop> }
+
+fn ppe_golden() -> PpeGolden { serde_json::from_str(&std::fs::read_to_string(format!("{}/testdata/golden/ppe.json", root())).unwrap()).unwrap() }
+
+/// the committed model is the one the notebook's card and golden vectors describe
+#[test]
+fn ppe_model_matches_its_card() {
+    let model = format!("{}/models/ppe_clifford_folded.onnx", root());
+    let card = vg360_infer::card::verify(&model).expect("model card");
+    assert_eq!(card.sha256(), ppe_golden().model_sha256);
+    let (lo, hi) = card.mcc_ci95().unwrap();
+    let mcc = card.test_mcc().unwrap();
+    assert!(lo <= mcc && mcc <= hi && (-1.0..=1.0).contains(&mcc));
+    eprintln!("PPE card: test MCC {mcc:.3} [{lo:.3}, {hi:.3}] on {} · meets floor: {}", card.data_source(), card.meets_floor());
+}
+
+fn check_ppe(ppe: &Ppe, tol: f64) {
+    let g = ppe_golden();
+    assert_eq!(g.size, ppe.size);
+    let mut worst = 0f64;
+    for c in &g.crops {
+        let p = ppe.p_helmet(c.u8.iter().map(|&v| v as f32 / 255.0).collect()).unwrap();
+        worst = worst.max((p - c.p_helmet).abs());
+        assert!((p - c.p_helmet).abs() < tol, "label {}: {p} vs {}", c.label, c.p_helmet);
+    }
+    eprintln!("PPE golden crops: {} crops, max |ΔP| {worst:.2e}", g.crops.len());
+}
+
+#[cfg(feature = "tract")]
+#[test]
+fn ppe_tract_matches_notebook_on_golden_crops() {
+    check_ppe(&Ppe::load_tract(format!("{}/models/ppe_clifford_folded.onnx", root()), 48).unwrap(), 1e-4);
+}
+
+#[cfg(feature = "ort")]
+#[test]
+fn ppe_ort_matches_notebook_on_golden_crops() {
+    check_ppe(&Ppe::load_ort(format!("{}/models/ppe_clifford_folded.onnx", root()), 48).expect("set ORT_DYLIB_PATH"), 1e-4);
+}

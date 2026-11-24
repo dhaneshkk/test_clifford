@@ -49,3 +49,28 @@ jobs:
         with: { workspaces: ". -> target\nvesdb -> target" }
       - run: cargo build --release --manifest-path vesdb/Cargo.toml -p vesdb-server -p vesdb-witness -p vesdb-verify
       - run: VESDB_BIN_DIR=$PWD/vesdb/target/release cargo test --release -p vg360-evidence -- --nocapture
+  lean:
+    name: Lean proofs (lean/ · Mathlib · no sorry)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: "! grep -rnw --include='*.lean' -e sorry -e admit lean/VG360 lean/VG360.lean"
+      - uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: lean
+  notebook:
+    name: training notebook (single cell, VG360_FAST=1 smoke run)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with: { python-version: "3.12" }
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install onnx onnxruntime opencv-python-headless scikit-learn nbformat
+      - name: notebook is one valid nbformat cell
+        run: python -c "import nbformat as n; nb=n.read('notebooks/vg360_train_cpu.ipynb',4); n.validate(nb); assert len(nb.cells)==1 and nb.cells[0].cell_type=='code'"
+      - name: smoke run (Clifford + CNN with SAM, fold, ONNX parity, card, golden)
+        run: |
+          python -c "import nbformat as n; open('/tmp/cell.py','w').write(n.read('notebooks/vg360_train_cpu.ipynb',4).cells[0].source)"
+          VG360_FAST=1 VG360_OUT=/tmp/vg360_out python /tmp/cell.py
+          python -c "import json; c=json.load(open('/tmp/vg360_out/models/ppe_clifford_folded.card.json')); assert c['parity']['max_abs_torch_vs_onnxruntime'] < 1e-3; print(c['metrics']['test_mcc'])"

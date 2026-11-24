@@ -129,6 +129,11 @@ fn load_detector(root: &str) -> Result<(Yolox, Option<Ppe>, Provenance), String>
     #[cfg(not(feature = "ort"))]
     let (det, ppe) = (Yolox::load_tract(m("yolox_nano.onnx"), 416).map_err(|e| format!("{e} (run scripts/fetch_models.sh)"))?,
                       Ppe::load_tract(m("ppe_clifford_folded.onnx"), 48).ok());
+    // the PPE model runs only if it is the exact model its training-notebook card describes
+    let ppe = match vg360_infer::card::verify(m("ppe_clifford_folded.onnx")) {
+        Ok(_) => ppe,
+        Err(e) => { eprintln!("PPE classifier disabled: {e}"); None }
+    };
     let prov = Provenance { model_sha256: sha(&m("yolox_nano.onnx")), ppe_model_sha256: Some(sha(&m("ppe_clifford_folded.onnx"))), calibration_sha256: String::new() };
     Ok((det, ppe, prov))
 }
@@ -140,7 +145,14 @@ pub fn start(root: &str, deployed_json: &str, validation: Option<&Value>, twin: 
                                signals: Arc::new(RwLock::new(Signals::default())), tx });
     let tiles: usize = std::env::var("VG360_TILES").ok().and_then(|t| t.parse().ok()).unwrap_or(1);
     let fps: f64 = std::env::var("VG360_FPS").ok().and_then(|t| t.parse().ok()).unwrap_or(10.0);
-    for s in specs(root, twin) {
+    let specs = specs(root, twin);
+    if !specs.is_empty() {
+        // record which models this site runs, with the notebook's model card (MCC, data, SAM settings)
+        if let (Some(v), Ok(card)) = (Vesdb::from_env(), vg360_infer::card::verify(format!("{root}/../../models/ppe_clifford_folded.onnx"))) {
+            let _ = v.model_deployed("ppe_clifford_folded", card.sha256(), json!({ "card": card.json }));
+        }
+    }
+    for s in specs {
         live.cams.write().unwrap().insert(s.id.clone(), CamLive { label: s.label.clone(), source: if s.url.starts_with("rtsp") { "rtsp".into() } else { "file".into() },
             summary: None, jpeg: None, frames: 0, fps: 0.0, error: None, last_push: None, started: Instant::now() });
         let (live2, root2, cfg_json, val, sd) = (live.clone(), root.to_string(), deployed_json.to_string(), validation.cloned(), state_dir.clone());

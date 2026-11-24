@@ -1,5 +1,9 @@
 
-import Mathlib
+import Mathlib.Basic.Real.Basic
+import Mathlib.Tactic.Ring
+import Mathlib.Tactic.Linarith
+import Mathlib.Tactic.FieldSimp
+import Mathlib.Tactic.LinearCombination
 
 /-! Conformal model over ℝ³ ⊕ ⟨e∞, e₀⟩ with e₀·e∞ = -1, e₀² = e∞² = 0.
     A conformal vector is (x₁,x₂,x₃, a, b) meaning x + a·e∞ + b·e₀. -/

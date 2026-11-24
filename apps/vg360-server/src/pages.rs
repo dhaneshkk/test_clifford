@@ -336,13 +336,22 @@ pub async fn training(cx: &Cx) -> Result<impl View> {
     let r = &site.report;
     let f = |p: &str| r.pointer(p).and_then(|v| v.as_f64()).unwrap_or(f64::NAN);
     let (fp32, int8) = (f("/det_ms_fp32"), f("/det_ms_int8"));
-    let ppe_mcc = f("/ppe/mcc");
+    let card = site.ppe_card.as_ref().ok();
+    let cj = move |p: &str| card.and_then(|c| c.json.pointer(p).cloned()).unwrap_or(serde_json::Value::Null);
+    let ppe_quality = match card {
+        Some(c) => format!("MCC {:.3} [{:.3}, {:.3}] on {} (n={})", c.test_mcc().unwrap_or(f64::NAN), c.mcc_ci95().map_or(f64::NAN, |x| x.0),
+                           c.mcc_ci95().map_or(f64::NAN, |x| x.1), if c.real_data() { "real crops" } else { "synthetic crops" }, cj("/data/n_test")),
+        None => "no verified model card".into(),
+    };
+    let baseline = card.map(|_| format!("plain CNN ({} conv weights, SAM): MCC {:.3} [{:.3}, {:.3}]", cj("/baseline_cnn/conv_params"),
+        cj("/baseline_cnn/test_mcc").as_f64().unwrap_or(f64::NAN), cj("/baseline_cnn/test_mcc_ci95/0").as_f64().unwrap_or(f64::NAN),
+        cj("/baseline_cnn/test_mcc_ci95/1").as_f64().unwrap_or(f64::NAN)));
     let steps = [
-        ("1", "Data", "Site clips → frames → labels (CVAT export); synthetic deck crops for PPE smoke tests."),
+        ("1", "Data", "Site footage → audit + crop harvest (§9) → labels; synthetic crops only as a smoke test."),
         ("2", "PPE classifier", "Cl(2,0) Clifford conv, trained with SAM (ρ = 0.05), per-crop standardisation; folded to plain conv for export."),
         ("3", "Detector", "YOLOX-Nano fine-tune with SAM; 3×3 tiling at 1080p; int8 static QDQ only if it is faster on the target CPU."),
-        ("4", "Validate", "MCC per event on held-out clips; per-rule MCC vs priority floor written to rule_studio_export.json."),
-        ("5", "Export", "ONNX (opset 13) + golden vectors for the Rust crates; SHA-256 manifest."),
+        ("4", "Validate", "Test MCC with bootstrap 95 % CI, plain-CNN baseline, sharpness at the SAM point; model selection on val MCC."),
+        ("5", "Export", "Fold → ONNX (opset 17), parity checks, model card with SHA-256, golden crops for the Rust tests; Lean facts checked in CI."),
         ("6", "Serve", "Rust: vg360-infer (ONNX Runtime CPU) → vg360-geom → rules → ledger → this console."),
     ];
     Ok(view! {
@@ -355,18 +364,35 @@ pub async fn training(cx: &Cx) -> Result<impl View> {
                     <thead><tr><th>"Model"</th><th>"Format"</th><th>"CPU latency"</th><th>"Quality"</th><th>"Status"</th></tr></thead>
                     <tbody>
                         <tr><td><b>"YOLOX-Nano"</b><div class="sub">"person detector, 416²"</div></td><td>"ONNX fp32"</td>
-                            <td class="num">(format!("{fp32:.1} ms"))</td><td>"COCO weights · not yet fine-tuned on site clips"</td><td><span class="pill ok">"serving"</span></td></tr>
+                            <td class="num">(format!("{fp32:.1} ms"))</td><td>"COCO weights · on real drill-floor footage (RIG 2004) finds 1 of 2–3 workers at 0.35 — fine-tune on labelled rig frames next"</td><td><span class="pill warn">"serving · needs site fine-tune"</span></td></tr>
                         <tr><td><b>"YOLOX-Nano"</b><div class="sub">"static QDQ int8"</div></td><td>"ONNX int8"</td>
                             <td class="num">(format!("{int8:.1} ms"))</td><td>"same detections on test frame (3 / 3)"</td><td><span class="pill warn">"rejected — slower"</span></td></tr>
-                        <tr><td><b>"PPE Clifford-conv"</b><div class="sub">(format!("{} Clifford params → {} folded", r.pointer("/ppe/conv_params_clifford").unwrap_or(&serde_json::Value::Null), r.pointer("/ppe/conv_params_folded_real").unwrap_or(&serde_json::Value::Null)))</div></td>
-                            <td>"ONNX fp32"</td><td class="num">(format!("{:.1} ms / 8 crops", f("/ppe/onnx_ms_per_8_crops")))</td>
-                            <td>(format!("MCC {ppe_mcc:.3} on synthetic crops"))</td><td><span class="pill warn">"needs real crops"</span></td></tr>
+                        <tr><td><b>"PPE Clifford-conv"</b><div class="sub">(format!("{} Clifford weights → {} folded · SAM ρ {}", cj("/conv_params/clifford_trainable"), cj("/conv_params/folded_real"), cj("/training/rho")))</div></td>
+                            <td>"ONNX fp32"</td><td class="num">(format!("{:.1} ms / 8 crops", cj("/parity/onnx_ms_per_8_crops").as_f64().unwrap_or(f64::NAN)))</td>
+                            <td>(ppe_quality)</td>
+                            <td>if card.is_some_and(|c| c.real_data() && c.meets_floor()) { <span class="pill ok">"serving"</span> }
+                                else if card.is_some() { <span class="pill warn">"serving · shadow (below floor / synthetic)"</span> }
+                                else { <span class="pill bad">"disabled"</span> }</td></tr>
                     </tbody>
                 </table>
-                <p class="note">"Clifford conv is not yet shown to beat a plain CNN of equal size; an A/B on real site crops is part of the plan."</p>
+                <h3>"PPE model card" <small>"models/ppe_clifford_folded.card.json · SHA-256 verified at start-up"</small></h3>
+                match &site.ppe_card {
+                    Ok(c) => {
+                        <dl>
+                            <dt>"sha256"</dt><dd><code>(c.sha256()[..16].to_string()) "…"</code></dd>
+                            <dt>"data"</dt><dd>(c.data_source().to_string())</dd>
+                            <dt>"selection"</dt><dd>(format!("best val MCC (epoch {})", cj("/metrics/best_epoch")))</dd>
+                            <dt>"sharpness"</dt><dd>(format!("test loss +{:.4} at the SAM point (ρ {})", cj("/metrics/sharpness/increase").as_f64().unwrap_or(f64::NAN), cj("/training/rho")))</dd>
+                            <dt>"parity"</dt><dd>(format!("torch ≡ folded ≡ onnxruntime (max |Δ| {:.1e})", cj("/parity/max_abs_torch_vs_onnxruntime").as_f64().unwrap_or(f64::NAN)))</dd>
+                            <dt>"baseline"</dt><dd>(baseline.clone().unwrap_or_default())</dd>
+                            <dt>"gate"</dt><dd>(format!("{} → floor {} · {}", cj("/gate/severity").as_str().unwrap_or(""), cj("/gate/mcc_floor"), if c.meets_floor() { "meets" } else { "below: rule stays shadow" }))</dd>
+                        </dl>
+                    }
+                    Err(e) => { <p class="note">"PPE classifier disabled: " (e.clone())</p> }
+                }
             </section>
             <aside class="card">
-                <h3>"Notebook pipeline" <small>"notebooks/vg360_train.ipynb"</small></h3>
+                <h3>"Notebook pipeline" <small>"notebooks/vg360_train_cpu.ipynb"</small></h3>
                 <ol class="steps">
                     for (n, t, d) in steps { <li><span class="n">(n)</span><div><b>(t)</b><p>(d)</p></div></li> }
                 </ol>
@@ -379,6 +405,8 @@ pub async fn training(cx: &Cx) -> Result<impl View> {
                 <tbody>
                     <tr><td><code>"golden::notebook_ledger_verifies_in_rust"</code></td><td>"SHA-256 chain written by Python re-verifies byte-for-byte"</td></tr>
                     <tr><td><code>"golden::notebook_mcc_matches_confusion_matrix"</code></td><td>"Rust MCC = sklearn MCC for every rule; floor matches priority"</td></tr>
+                    <tr><td><code>"golden::ppe_model_matches_its_card"</code></td><td>"ONNX SHA-256 = model card = golden file; card MCC inside its bootstrap CI"</td></tr>
+                    <tr><td><code>"golden::ppe_tract_matches_notebook_on_golden_crops"</code></td><td>"16 notebook test crops: P(helmet) within 1e-4 of onnxruntime (measured 2e-6)"</td></tr>
                     <tr><td><code>"metrics::notebook_ppe_mcc"</code></td><td>"PPE confusion matrix → 0.8200540091801047"</td></tr>
                     <tr><td><code>"camera::round_trip"</code></td><td>"deck point → pixel → deck point with roll and yaw"</td></tr>
                     <tr><td><code>"policy::moved_needs_hold_then_clears_after_ok_hold"</code></td><td>"camera-guard hold times ported from camera_guard"</td></tr>

@@ -102,11 +102,12 @@ Cameras read their stream URL from `VG360_CAM_<ID>_URL` (e.g. `VG360_CAM_CAM_05_
 VG360_DEMO=1 cargo run -p vg360-server --release      # replay testdata/clip/clip.mp4 as camera DEMO
 # → http://127.0.0.1:3000/live
 VG360_CAM_C5_URL='rtsp://…' cargo run -p vg360-server --release --features ort   # a Rig Twin camera
+RTSP_FEED='rtsp://…' cargo run -p vg360-server --release                         # a standalone camera LIVE
 ```
 
 * A worker starts for every camera of the applied Rig Twin whose `VG360_CAM_<ID>_URL` is set. It uses
   that camera's twin calibration and the twin zones it watches (twin rule `red` → exclusion zone,
-  `height` → deck edge, `lift` → load drop zone). `VG360_DEMO=1` adds the simulated clip; `VG360_TILES`
+  `height` → deck edge, `lift` → load drop zone). `VG360_DEMO=1` adds the simulated clip; `RTSP_FEED` adds a standalone camera `LIVE` instead (generic pinhole from `VG360_LIVE_SIZE` / `_HFOV` / `_PITCH` / `_HEIGHT`, no zones, auto-height). `VG360_TILES`
   (default 1) and `VG360_FPS` (default 10) trade recall for CPU.
 * `GET /api/live` (state) · `GET /api/live/events` (SSE: `hello`, `frame`, `alert`, `signals`) ·
   `GET /api/live/{cam}/frame.jpg` · `GET /api/evidence/{incident}/snapshot.jpg` ·

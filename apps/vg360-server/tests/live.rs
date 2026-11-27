@@ -37,7 +37,7 @@ fn live_demo_end_to_end() {
     let port = 39000 + (std::process::id() % 1000) as u16;
     let state = std::env::temp_dir().join(format!("vg360-live-test-{}", std::process::id()));
     let _srv = Server(Command::new(env!("CARGO_BIN_EXE_vg360-server"))
-        .env("VG360_DEMO", "1").env("PORT", port.to_string()).env("VG360_STATE_DIR", &state).env("VG360_ROOT", root)
+        .env("VG360_DEMO", "1").env_remove("RTSP_FEED").env("PORT", port.to_string()).env("VG360_STATE_DIR", &state).env("VG360_ROOT", root)
         .env_remove("VG360_VESDB_URL").stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap());
 
     // the demo camera starts producing frames
@@ -55,6 +55,15 @@ fn live_demo_end_to_end() {
     assert_eq!(cam["id"], "DEMO");
     assert!(cam["error"].is_null(), "{cam}");
     assert!(cam["latest"]["people"].as_array().unwrap().len() >= 1, "the demo clip has workers on deck: {cam}");
+
+    // guard / warning contract and the persisted reference
+    let lt = &cam["latest"];
+    assert!(lt["status_label"].is_string(), "{lt}");
+    assert!(lt["guidance"].is_array(), "{lt}");
+    assert!(["ok", "warn", "alarm"].contains(&lt["warning"]["level"].as_str().unwrap_or("")), "{lt}");
+    assert!(lt["warning"]["text"].is_string() && lt.get("auto_height").is_some() && (lt["auto_height"].is_null() || lt["auto_height"]["state"].is_string()), "{lt}");
+    assert!(cam.get("stale_s").is_some());
+    assert!(state.join("reference/DEMO.png").exists() && state.join("reference/DEMO.json").exists(), "reference not stored under {state:?}");
 
     // latest frame as JPEG
     let (code, head, jpg) = http(port, "GET", "/api/live/DEMO/frame.jpg", None, Duration::from_secs(5));

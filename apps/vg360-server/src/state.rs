@@ -210,7 +210,7 @@ impl Site {
         let m = aligner.measure(&Bgr::load(format!("{root}/public/samples/cam5_moved.jpg")).expect("live frame"));
         eprintln!("camera guard CAM-05: {ref_pts} reference points, {} inliers, {:?} in {:?}", m.inliers, m.pose, t.elapsed());
         let mut guard = Guard::default();
-        let status = (0..20).map(|i| guard.step(i as f64 * 0.25, if m.ok { Observation::Fix(m.pose) } else if m.blocked { Observation::Blocked } else { Observation::NoFix })).last().unwrap();
+        let status = (0..20).map(|i| guard.step(i as f64 * 0.25, if m.ok { Observation::Fix(m.pose, m.inliers) } else if m.blocked { Observation::Blocked } else { Observation::NoFix })).last().unwrap();
         let ledger = Ledger { entries: x.ledger };
         let ledger_check = ledger.verify();
         let home = Pose { dx: 0.0, dy: 0.0, angle: 0.0, scale: 1.0, corner: 0.0 };

@@ -93,18 +93,134 @@ fn large_knock_pauses_analytics() {
 }
 
 #[test]
-fn covered_lens_pauses_after_the_hold_time() {
+fn covered_lens_suspends_analytics_at_once_and_raises_blocked_after_the_hold_time() {
     let mut w = worker(1);
+    // a real frame first, so analytics are known to run before the lens is covered
+    let live = w.process(&frame(5), 0.5, 0.1, &sig()).unwrap();
+    assert!(live.analytics_suspended.is_none() && !live.boxes.is_empty(), "analytics run on the clear view");
     let black = Bgr::new(1280, 720);
-    let mut first_pause = None;
+    let (mut first_blocked, mut first_paused) = (None, None);
     for k in 0..70 {
         let t = 1.0 + k as f64 * 0.1;
         let r = w.process(&black, t, 0.1, &sig()).unwrap();
-        if r.mode == Mode::Paused && first_pause.is_none() { first_pause = Some(t - 1.0); }
+        // from the very first dark frame: no detections, no scene, no rule evaluated, reason given
+        assert_eq!(r.analytics_suspended.as_deref(), Some("lens blocked"), "frame {k}");
+        assert!(r.boxes.is_empty() && r.recs.is_empty() && r.alerts.is_empty(), "frame {k}");
+        if k == 0 { assert_eq!(r.status, vg360_guard::policy::Status::Ok); assert!(r.guard_pending.is_some()); }
+        if r.status == vg360_guard::policy::Status::Blocked && first_blocked.is_none() { first_blocked = Some(t - 1.0); }
+        if r.mode == Mode::Paused && first_paused.is_none() { first_paused = Some(t - 1.0); }
     }
-    let p = first_pause.expect("never paused");
-    eprintln!("covered lens: analytics paused after {p:.1} s");
-    assert!((vg360_guard::config::BLOCKED_HOLD - 0.15..vg360_guard::config::BLOCKED_HOLD + 0.35).contains(&p));
+    let (b, p) = (first_blocked.expect("never Blocked"), first_paused.expect("never paused"));
+    eprintln!("covered lens: analytics suspended from the first dark frame; status Blocked after {b:.1} s, mode Paused after {p:.1} s");
+    let hold = vg360_guard::config::BLOCKED_HOLD;
+    assert!((hold - 0.15..hold + 0.35).contains(&b));
+    assert!((hold - 0.15..hold + 0.35).contains(&p));
+}
+
+#[test]
+fn a_failed_tick_keeps_the_last_good_compensation() {
+    let mut w = worker(1);
+    assert_eq!(w.cur_to_ref(), [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]);
+    let mut good = None;
+    for i in 3..9 {
+        let r = w.process(&knock(&frame(i), 1.5, 32.0, -14.0), i as f64 * 0.1, 0.1, &sig()).unwrap();
+        if r.mode == Mode::Compensated { good = Some(w.cur_to_ref()); }
+    }
+    let good = good.expect("never compensated");
+    assert_ne!(good[0][2], 0.0, "a real compensation matrix");
+    // lens goes dark: the guard tick fails, analytics suspend, the matrix is NOT reset to identity
+    let r = w.process(&Bgr::new(1280, 720), 1.0, 0.1, &sig()).unwrap();
+    assert_eq!(r.analytics_suspended.as_deref(), Some("lens blocked"));
+    assert_eq!(r.mode, Mode::Compensated, "still inside the hold time");
+    assert_eq!(w.cur_to_ref(), good);
+    // set_reference resets everything tied to the old reference
+    w.set_reference(&frame(0), &[frame(1), frame(2)]);
+    assert_eq!(w.cur_to_ref()[0][2], 0.0);
+    assert_eq!(w.mode(), Mode::Aligned);
+}
+
+#[test]
+fn compensated_while_status_moved_still_runs_analytics() {
+    // a small knock held past MOVED_HOLD: the alarm says CAMERA MOVED but analytics keep running (the guide's promise)
+    let mut w = worker(1);
+    let mut last = None;
+    for k in 0..45 {
+        last = Some(w.process(&knock(&frame(5 + k % 4), 1.5, 32.0, -14.0), k as f64 * 0.1, 0.1, &sig()).unwrap());
+    }
+    let r = last.unwrap();
+    eprintln!("after 4.5 s knocked: status {:?} mode {:?}", r.status, r.mode);
+    assert_eq!(r.status, vg360_guard::policy::Status::Moved);
+    assert_eq!(r.mode, Mode::Compensated);
+    assert!(r.analytics_suspended.is_none() && !r.boxes.is_empty());
+}
+
+#[test]
+fn rotated_box_is_not_inflated_when_mapped_to_reference() {
+    let mut w = worker(1);
+    for i in 3..9 { w.process(&knock(&frame(i), 3.0, 0.0, 0.0), i as f64 * 0.1, 0.1, &sig()).unwrap(); }
+    assert_eq!(w.mode(), Mode::Compensated);
+    let d = vg360_infer::yolox::Det { x1: 500.0, y1: 200.0, x2: 580.0, y2: 400.0, score: 0.9, class: 0 };
+    let b = w.to_reference(&d);
+    let (bw, bh) = (b[2] - b[0], b[3] - b[1]);
+    eprintln!("rotated 3 deg: 80x200 box maps to {bw:.1}x{bh:.1}");
+    assert!((bw - 80.0).abs() < 1e-6, "width kept");
+    assert!((bh - 200.0).abs() <= 4.0, "height inflated by more than 2 %: {bh}");
+}
+
+#[test]
+fn provenance_follows_the_reference_and_the_camera() {
+    let mut w = worker(1);
+    assert_eq!(w.evidence_errors(), 0);
+    let hash = |c: &Camera| vg360_evidence::sha256_hex(serde_json::to_string(c).unwrap().as_bytes());
+    assert_eq!(w.provenance().unwrap().calibration_sha256, hash(&w.scene.cam));
+    w.scene.cam.height_m = 7.0;                 // camera changed behind the worker's back
+    w.set_reference(&frame(0), &[frame(1), frame(2)]);
+    assert_eq!(w.provenance().unwrap().calibration_sha256, hash(&w.scene.cam));
+}
+
+#[test]
+fn reference_capture_validates_and_persists() {
+    let mut w = worker(1);
+    let dark = vec![Bgr::new(1280, 720); 3];
+    let why = w.capture_reference(&dark).unwrap_err();
+    eprintln!("dark reference refused: {why}");
+    assert!(why.contains("dark"), "{why}");
+    let frames: Vec<Bgr> = (0..4).map(frame).collect();
+    let (bi, info) = w.capture_reference(&frames).expect("clip reference is usable");
+    eprintln!("best reference frame {bi}, {} points", info.points);
+    assert!(info.points >= 80);
+    let dir = std::env::temp_dir().join(format!("vg360-ref-{}", std::process::id()));
+    let sha = w.save_reference(&dir, &frames[bi]).unwrap();
+    // restart: a fresh worker loads the stored reference; the unmoved view is Aligned, a moved one is seen as moved
+    let mut w2 = worker(1);
+    let loaded = w2.load_reference(&dir).unwrap().expect("stored reference");
+    assert_eq!(loaded.sha256, sha);
+    eprintln!("stored reference reloaded: {} points (captured {})", loaded.points, info.points);
+    let r = w2.process(&frame(6), 1.0, 0.1, &sig()).unwrap();
+    assert_eq!(r.mode, Mode::Aligned, "{:?}", r.pose);
+    let r = w2.process(&knock(&frame(6), 1.5, 32.0, -14.0), 1.1, 0.1, &sig()).unwrap();
+    assert_eq!(r.mode, Mode::Compensated, "a camera moved while the server was down is seen as moved: {:?}", r.pose);
+    // a tampered image is refused
+    std::fs::write(dir.join("CAM-T.png"), b"not the reference").unwrap();
+    assert!(worker(1).load_reference(&dir).is_err());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn stream_loop_reports_a_stall_and_carries_on() {
+    use vg360_pipeline::{Src, drive};
+    let mut w = worker(1);
+    let mut script = vec![Src::Frame(frame(3), Some(0.01)), Src::Stall, Src::Stall, Src::Frame(frame(4), Some(0.02)), Src::End].into_iter();
+    let (tx, rx) = std::sync::mpsc::sync_channel(16);
+    let mut t = 0.0;
+    drive(&mut w, &mut || script.next().unwrap_or(Src::End), &mut || { t += 0.1; t }, 0.1, &|_| sig(), &tx);
+    drop(tx);
+    let got: Vec<_> = rx.iter().collect();
+    assert_eq!(got.len(), 4);
+    assert_eq!(got[0].as_ref().unwrap().frame_age_s, Some(0.01));
+    assert_eq!(got[1].as_ref().unwrap_err(), "stream stalled: no frames for 30 s");
+    assert!(got[2].is_err());
+    assert_eq!(got[3].as_ref().unwrap().frame_age_s, Some(0.02), "frames resume after the stall");
 }
 
 #[test]

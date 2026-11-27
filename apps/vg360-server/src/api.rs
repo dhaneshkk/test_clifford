@@ -34,18 +34,88 @@ pub struct ChatReq { pub model: Option<String>, pub messages: Vec<Msg>, #[serde(
 
 fn now() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()) }
 
+/// One camera for the assistant and `/v1/cameras`: a live stream (from the live snapshot) or a static sample.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CamLine {
+    pub source: &'static str,
+    pub id: String,
+    pub label: String,
+    pub status: Value,
+    pub status_label: String,
+    pub mode: String,
+    pub warning: Option<String>,
+    pub guidance: Vec<String>,
+    pub error: Option<String>,
+    pub stale_s: Option<f64>,
+    pub fps: f64,
+}
+
+fn str_of(v: &Value) -> Option<String> { v.as_str().map(str::to_owned).filter(|s| !s.is_empty()) }
+
+/// Live cameras from a `Live::snapshot()` JSON value. Every field is optional: missing ones fall back to neutral defaults.
+pub fn live_lines(snapshot: &Value) -> Vec<CamLine> {
+    snapshot["cameras"].as_array().into_iter().flatten().map(|c| {
+        let lt = &c["latest"];
+        let status = lt.get("status").cloned().unwrap_or(Value::Null);
+        let status_label = str_of(&lt["status_label"]).or_else(|| str_of(&status)).unwrap_or_else(|| "UNKNOWN".into());
+        let warning = str_of(&lt["warning"]).or_else(|| str_of(&lt["warning"]["text"]));
+        CamLine {
+            source: "live",
+            id: str_of(&c["id"]).unwrap_or_default(),
+            label: str_of(&c["label"]).unwrap_or_default(),
+            status,
+            status_label,
+            mode: str_of(&lt["mode"]).unwrap_or_else(|| "starting".into()),
+            warning,
+            guidance: lt["guidance"].as_array().into_iter().flatten().filter_map(str_of).collect(),
+            error: str_of(&c["error"]),
+            stale_s: c["stale_s"].as_f64(),
+            fps: c["fps"].as_f64().unwrap_or(0.0),
+        }
+    }).collect()
+}
+
+/// Live cameras first (from the live snapshot), then the static sample cameras.
+pub fn camera_lines(site: &Site) -> Vec<CamLine> {
+    let mut v = live_lines(&site.live.snapshot());
+    v.extend(site.cams.iter().map(|c| CamLine {
+        source: "sample",
+        id: c.id.to_string(),
+        label: c.name.to_string(),
+        status: json!(c.guard),
+        status_label: c.guard.label().to_string(),
+        mode: format!("{:?}", c.mode).to_lowercase(),
+        warning: None,
+        guidance: if c.guard == Status::Ok { vec![] } else { c.guidance() },
+        error: None,
+        stale_s: None,
+        fps: c.fps,
+    }));
+    v
+}
+
+fn capitalize(s: &str) -> String {
+    let mut ch = s.chars();
+    ch.next().map_or(String::new(), |f| f.to_uppercase().chain(ch).collect())
+}
+
+/// One human line: `LIVE DEMO — CAMERA MOVED · Compensated — <warning> (<first guidance>)`.
+/// Samples read `ID name (sample) — …` when `tag_samples` is set (live cameras exist).
+pub fn render_cam(c: &CamLine, tag_samples: bool) -> String {
+    let head = if c.source == "live" { format!("LIVE {}", c.id) } else if tag_samples { format!("{} {} (sample)", c.id, c.label) } else { format!("{} {}", c.id, c.label) };
+    let mut s = format!("{head} — {} · {}", c.status_label, capitalize(&c.mode));
+    if let Some(w) = &c.warning { s += &format!(" — {w}"); }
+    if let Some(g) = c.guidance.first() { s += &format!(" ({g})"); }
+    s
+}
+
 pub fn answer(site: &Site, q: &str) -> String {
     let q = q.to_lowercase();
     let mut out = Vec::new();
     if q.contains("camera") || q.contains("guard") || q.contains("moved") || q.contains("status") {
-        for c in &site.cams {
-            let mut line = format!("{} {} — {}", c.id, c.name, c.guard.label());
-            if c.guard != Status::Ok {
-                let mode = match c.mode { vg360_pipeline::Mode::Compensated => "analytics continue, shift-compensated", vg360_pipeline::Mode::Paused => "analytics paused", vg360_pipeline::Mode::Aligned => "analytics running" };
-                line += &format!(" ({mode}; {})", c.guidance().join(", "));
-            }
-            out.push(line);
-        }
+        let lines = camera_lines(site);
+        let tag = lines.iter().any(|c| c.source == "live");
+        out.extend(lines.iter().map(|c| render_cam(c, tag)));
     }
     if q.contains("rule") || q.contains("mcc") || q.contains("armed") {
         if site.iogp.draft { out.push("Rules config is a draft (not approved in iogp-editor): all rules run in shadow mode.".into()); }
@@ -64,11 +134,11 @@ pub fn answer(site: &Site, q: &str) -> String {
         let l = site.live.snapshot();
         let cams = l["cameras"].as_array().cloned().unwrap_or_default();
         if cams.is_empty() { out.push("No live streams (set VG360_CAM_<ID>_URL for twin cameras, or VG360_DEMO=1).".into()); }
-        for c in &cams {
+        for (c, lc) in cams.iter().zip(live_lines(&l)) {
             let lt = &c["latest"];
-            out.push(format!("LIVE {} — {:.1} fps, {} frames, {} people in view, analytics {}{}", c["id"].as_str().unwrap_or(""),
+            out.push(format!("LIVE {} — {} · {:.1} fps, {} frames, {} people in view, analytics {}{}", lc.id, lc.status_label,
                 c["fps"].as_f64().unwrap_or(0.0), c["frames"], lt["people"].as_array().map_or(0, |p| p.len()),
-                lt["mode"].as_str().unwrap_or("starting"), c["error"].as_str().map(|e| format!(" (error: {e})")).unwrap_or_default()));
+                lc.mode, lc.error.as_ref().map(|e| format!(" (error: {e})")).unwrap_or_default()));
         }
         for a in l["alerts"].as_array().into_iter().flatten().take(5) {
             out.push(format!("{} t={:.1}s {} {} {} [{}]{}", a["camera"].as_str().unwrap_or(""), a["t"].as_f64().unwrap_or(0.0),
@@ -127,10 +197,15 @@ pub async fn ledger(cx: &Cx) -> Result<Json<Value>> {
 #[route(GET "/v1/cameras")]
 pub async fn cameras(cx: &Cx) -> Result<Json<Value>> {
     let site = context::<Site>(cx);
-    Ok(Json(json!({"cameras": site.cams.iter().map(|c| json!({
-        "id": c.id, "name": c.name, "guard": c.guard, "analytics": c.mode,
+    let live = live_lines(&site.live.snapshot()).into_iter().map(|c| json!({
+        "id": c.id, "label": c.label, "source": "live", "status": c.status, "status_label": c.status_label, "mode": c.mode,
+        "warning": c.warning, "guidance": c.guidance, "error": c.error, "stale_s": c.stale_s, "fps": c.fps
+    }));
+    let samples = site.cams.iter().map(|c| json!({
+        "id": c.id, "name": c.name, "source": "sample", "guard": c.guard, "analytics": c.mode,
         "pose": c.pose, "guidance": c.guidance(), "rules": c.rules, "url_env": c.env_var()
-    })).collect::<Vec<_>>()})))
+    }));
+    Ok(Json(json!({"cameras": live.chain(samples).collect::<Vec<_>>()})))
 }
 
 // ───────────────────────────── Rig Twin and Rule Studio data
@@ -231,41 +306,74 @@ pub async fn signals(cx: &Cx, Json(r): Json<SignalsReq>) -> Result<Json<Value>> 
     Ok(Json(v))
 }
 
-// ───────────────────────────── auto-calibration (no surveyed deck points)
-
-#[derive(Deserialize)]
-pub struct CalibReq {
-    pub width: f64,
-    pub height: f64,
-    /// image segments [x1, y1, x2, y2] of one family of parallel horizontal deck edges …
-    pub lines_a: Vec<[f64; 4]>,
-    /// … and of a second family at right angles to the first
-    pub lines_b: Vec<[f64; 4]>,
-    /// optional boxes [x1, y1, x2, y2] of people standing upright → mount height
-    #[serde(default)] pub people: Vec<[f64; 4]>,
-    #[serde(default)] pub person_m: Option<f64>,
-}
+// ───────────────────────────── auto-calibration (no surveyed deck points): see calib_api.rs
 
 /// Vanishing points → focal length, field of view, pitch, roll; standing people → mount height.
 /// The result's `twin` block is what to enter for the camera in the Rig Twin (fov, pitch, h above the deck).
 #[route(POST "/api/calibrate")]
-pub async fn calibrate(cx: &Cx, Json(r): Json<CalibReq>) -> Result<Json<Value>> {
-    use vg360_geom::autocal;
-    let seg = |l: &Vec<[f64; 4]>| l.iter().map(|s| ([s[0], s[1]], [s[2], s[3]])).collect::<Vec<_>>();
-    let (Some(v1), Some(v2)) = (autocal::vanishing_point(&seg(&r.lines_a)), autocal::vanishing_point(&seg(&r.lines_b))) else {
-        return Ok(Json(json!({ "ok": false, "error": "each family needs ≥ 2 segments that are not parallel in the image" })));
-    };
-    let Some(k) = autocal::from_vanishing_points(v1, v2, r.width / 2.0, r.height / 2.0, r.width) else {
-        return Ok(Json(json!({ "ok": false, "vanishing_points": [v1, v2],
-            "error": "the two families do not look orthogonal from a real camera (f² ≤ 0): check that they are at right angles on the deck" })));
-    };
-    let cam = vg360_geom::camera::Camera { f_px: k.f_px, cx: r.width / 2.0, cy: r.height / 2.0, height_m: 1.0, pitch_deg: k.pitch_deg,
-                                          yaw_deg: 0.0, roll_deg: k.roll_deg, x0: 0.0, y0: 0.0 };
-    let h = (!r.people.is_empty()).then(|| autocal::height_from_people(&cam, &r.people, r.person_m.unwrap_or(1.70))).flatten();
-    Ok(Json(json!({ "ok": true, "vanishing_points": [v1, v2], "f_px": k.f_px, "hfov_deg": k.hfov_deg, "pitch_deg": k.pitch_deg,
-        "roll_deg": k.roll_deg, "height_m": h,
-        "twin": { "fov": (k.hfov_deg * 10.0).round() / 10.0, "pitch": (k.pitch_deg * 10.0).round() / 10.0, "h_above_deck": h.map(|h| (h * 100.0).round() / 100.0) },
-        "notes": [ "pitch/fov/height assume square pixels and a centred principal point",
-                   if k.roll_deg.abs() > 2.0 { "roll above 2°: level the camera or calibrate from deck points (the twin assumes zero roll)" } else { "roll ≈ 0" },
-                   if h.is_none() { "no height: add boxes of standing people, or set VG360_CAM_<ID>_AUTO_HEIGHT=1 to estimate it live" } else { "height from the median head height of the people boxes (1.70 m assumed)" } ] })))
+pub async fn calibrate(cx: &Cx, Json(r): Json<crate::calib_api::CalibReq>) -> Result<Response> {
+    let (status, body) = crate::calib_api::run(&r);
+    (status, Json(body)).into_response(cx)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn snapshot() -> Value {
+        json!({ "cameras": [{
+            "id": "DEMO", "label": "LIVE DEMO", "source": "demo", "frames": 120, "fps": 9.5, "error": null, "stale_s": 0.4,
+            "latest": { "status": "moved", "status_label": "CAMERA MOVED", "mode": "compensated",
+                "guidance": ["Move view RIGHT 5.0%", "Re-aim the camera"],
+                "warning": { "level": "amber", "text": "Camera moved — analytics continue through shift compensation; please re-aim the camera" },
+                "people": [1, 2] }
+        }, {
+            "id": "CAM2", "fps": 0.0, "frames": 0, "error": "stream closed", "latest": {}
+        }], "alerts": [], "signals": {} })
+    }
+
+    #[test]
+    fn live_lines_read_status_warning_and_guidance() {
+        let lines = live_lines(&snapshot());
+        assert_eq!(lines.len(), 2);
+        let demo = &lines[0];
+        assert_eq!(demo.source, "live");
+        assert_eq!(demo.id, "DEMO");
+        assert_eq!(demo.status_label, "CAMERA MOVED");
+        assert_eq!(demo.mode, "compensated");
+        assert_eq!(demo.guidance, vec!["Move view RIGHT 5.0%", "Re-aim the camera"]);
+        assert!(demo.warning.as_deref().unwrap().starts_with("Camera moved"));
+        assert_eq!(demo.stale_s, Some(0.4));
+        assert_eq!(demo.error, None);
+    }
+
+    #[test]
+    fn live_lines_default_when_fields_missing() {
+        let lines = live_lines(&snapshot());
+        let bare = &lines[1];
+        assert_eq!(bare.status_label, "UNKNOWN");
+        assert_eq!(bare.mode, "starting");
+        assert!(bare.warning.is_none() && bare.guidance.is_empty());
+        assert_eq!(bare.error.as_deref(), Some("stream closed"));
+        assert_eq!(live_lines(&json!({})).len(), 0);
+    }
+
+    #[test]
+    fn render_live_camera_line() {
+        let lines = live_lines(&snapshot());
+        assert_eq!(
+            render_cam(&lines[0], true),
+            "LIVE DEMO — CAMERA MOVED · Compensated — Camera moved — analytics continue through shift compensation; please re-aim the camera (Move view RIGHT 5.0%)"
+        );
+    }
+
+    #[test]
+    fn render_sample_line_tagged_only_when_live_exists() {
+        let sample = CamLine {
+            source: "sample", id: "C1".into(), label: "Gate".into(), status: json!("moved"), status_label: "CAMERA MOVED".into(),
+            mode: "paused".into(), warning: None, guidance: vec!["Re-aim".into()], error: None, stale_s: None, fps: 0.0,
+        };
+        assert_eq!(render_cam(&sample, true), "C1 Gate (sample) — CAMERA MOVED · Paused (Re-aim)");
+        assert_eq!(render_cam(&sample, false), "C1 Gate — CAMERA MOVED · Paused (Re-aim)");
+    }
 }

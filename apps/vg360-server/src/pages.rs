@@ -8,7 +8,6 @@ use topcoat::{
 };
 use vg360_geom::ledger::Verify;
 use vg360_guard::{config as gc, policy::Status};
-use vg360_pipeline::Mode;
 
 use crate::state::{Cam, Lens, Site};
 use crate::ui::{Trusted, guard_tone};
@@ -22,14 +21,207 @@ fn verify_text(v: &Verify) -> (bool, String) {
 
 fn pct(x: f64) -> String { format!("{:.1}%", x * 100.0) }
 
-fn lens_label(l: Lens) -> &'static str {
-    match l { Lens::Pinhole => "Rectilinear", Lens::Fisheye => "Fisheye 190°" }
-}
 
 fn alert_counts(site: &Site) -> BTreeMap<String, usize> {
     let mut m = BTreeMap::new();
     for e in &site.ledger.entries { *m.entry(e.rule.clone()).or_insert(0) += 1; }
     m
+}
+
+// ───────────────────────────── camera view model ─────────────────────────────
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PoseView { pub dx: f64, pub dy: f64, pub angle: f64, pub scale: f64, pub corner: f64 }
+
+/// Everything the camera page and the overview need about one camera, whether it is one of the static
+/// sample cameras or a live worker (built defensively from the live snapshot: missing fields get defaults).
+#[derive(Clone, Debug, Default)]
+pub struct CamView {
+    pub id: String,
+    pub name: String,
+    pub is_sample: bool,
+    pub status_label: String,
+    /// "ok" | "warn" | "bad"
+    pub tone: &'static str,
+    pub alarm: bool,
+    /// "Aligned" | "Compensated" | "Paused"
+    pub mode: String,
+    pub pose: Option<PoseView>,
+    pub inliers: Option<i64>,
+    pub guidance: Vec<String>,
+    pub warning_level: String,
+    pub warning_text: String,
+    pub ref_quad: Option<[[f64; 2]; 4]>,
+    pub w: f64,
+    pub h: f64,
+    pub frame_url: String,
+    pub reference_url: Option<String>,
+    pub height_m: Option<f64>,
+    pub pitch_deg: Option<f64>,
+    pub hfov_deg: Option<f64>,
+    pub fisheye: bool,
+    pub method: String,
+    pub rms_m: Option<f64>,
+    pub rules: Vec<String>,
+    pub auto_height: Option<String>,
+    pub pending: Option<String>,
+    pub error: Option<String>,
+    pub sub: String,
+}
+
+fn tone_of(status: &str) -> &'static str {
+    match status { "Ok" => "ok", "Realigning" => "warn", "Moved" | "Blocked" | "ViewLost" => "bad", _ => "warn" }
+}
+
+fn status_text(status: &str) -> String {
+    match status {
+        "Ok" => Status::Ok.label(), "Moved" => Status::Moved.label(), "Blocked" => Status::Blocked.label(),
+        "ViewLost" => Status::ViewLost.label(), "Realigning" => Status::Realigning.label(), _ => "STARTING",
+    }.to_string()
+}
+
+fn lens_text(fisheye: bool) -> &'static str { if fisheye { "Fisheye 190°" } else { "Rectilinear" } }
+
+fn num(v: &serde_json::Value, k: &str) -> Option<f64> { v.get(k).and_then(|x| x.as_f64()) }
+
+impl CamView {
+    pub fn from_sample(c: &Cam) -> Self {
+        let fisheye = matches!(c.lens, Lens::Fisheye);
+        let alarm = c.guard != Status::Ok;
+        CamView {
+            id: c.id.into(), name: c.name.into(), is_sample: true, status_label: c.guard.label().into(), tone: guard_tone(c.guard), alarm,
+            mode: format!("{:?}", c.mode),
+            pose: Some(PoseView { dx: c.pose.dx, dy: c.pose.dy, angle: c.pose.angle, scale: c.pose.scale, corner: c.pose.corner }),
+            inliers: Some(c.inliers as i64), guidance: c.guidance(),
+            warning_level: if alarm { "alarm" } else { "ok" }.into(), warning_text: c.guard.label().into(),
+            ref_quad: c.ref_quad, w: 1280.0, h: 720.0, frame_url: c.frame.into(), reference_url: c.reference.map(Into::into),
+            height_m: Some(c.height_m), pitch_deg: Some(c.pitch_deg), hfov_deg: Some(c.hfov_deg), fisheye,
+            method: c.calib_method.into(), rms_m: Some(c.calib_rms_m), rules: c.rules.iter().map(|r| r.to_string()).collect(),
+            auto_height: None, pending: None, error: None,
+            sub: format!("{:.0} fps · {:.0} ms/frame · h {:.0} m · pitch {:.0}°", c.fps, c.infer_ms, c.height_m, c.pitch_deg),
+        }
+    }
+
+    /// From one entry of `Live::snapshot()["cameras"]`. Every field except `id` is optional.
+    pub fn from_live(c: &serde_json::Value) -> Self {
+        let id = c["id"].as_str().unwrap_or("").to_string();
+        let l = &c["latest"];
+        let status = l["status"].as_str().unwrap_or("");
+        let error = c["error"].as_str().map(str::to_string);
+        let fisheye = c["fisheye"].as_bool().unwrap_or(false);
+        let pt = |v: &serde_json::Value| -> Option<PoseView> {
+            v.is_object().then(|| PoseView { dx: num(v, "dx").unwrap_or(0.0), dy: num(v, "dy").unwrap_or(0.0), angle: num(v, "angle").unwrap_or(0.0),
+                                             scale: num(v, "scale").unwrap_or(1.0), corner: num(v, "corner").unwrap_or(0.0) })
+        };
+        let pose = pt(&l["pose"]).or_else(|| pt(&l["smoothed_pose"]));
+        let ref_quad = l["ref_box"].as_array().filter(|a| a.len() == 4).and_then(|a| {
+            let mut q = [[0.0; 2]; 4];
+            for (i, p) in a.iter().enumerate() { q[i] = [p.get(0)?.as_f64()?, p.get(1)?.as_f64()?]; }
+            Some(q)
+        });
+        let level = l["warning"]["level"].as_str().unwrap_or("ok").to_string();
+        let alarm = level == "alarm" || (!status.is_empty() && status != "Ok");
+        let guidance: Vec<String> = l["guidance"].as_array().into_iter().flatten().filter_map(|g| g.as_str().map(str::to_string)).collect();
+        let status_label = l["status_label"].as_str().map(str::to_string).unwrap_or_else(|| status_text(status));
+        let tone = if status.is_empty() { if error.is_some() { "bad" } else { "warn" } } else { tone_of(status) };
+        let tone = if level == "alarm" && tone == "ok" { "bad" } else { tone };
+        let mode = l["mode"].as_str().unwrap_or("Aligned").to_string();
+        let ah = &l["auto_height"];
+        let auto_height = ah.is_object().then(|| {
+            let st = ah["state"].as_str().unwrap_or("?");
+            match (num(ah, "value"), ah["samples"].as_u64()) {
+                (Some(v), Some(n)) => format!("{st} · {v:.1} m ({n} samples)"),
+                (Some(v), None) => format!("{st} · {v:.1} m"),
+                (None, Some(n)) => format!("{st} ({n} samples)"),
+                _ => st.to_string(),
+            }
+        });
+        let pending = l["pending"].as_object().map(|p| format!("{} for {:.1} s", p.get("status").and_then(|s| s.as_str()).unwrap_or("?"),
+                                                            p.get("elapsed_s").and_then(|s| s.as_f64()).unwrap_or(0.0)));
+        let height_m = num(l, "height_m");
+        CamView {
+            name: c["label"].as_str().unwrap_or("").to_string(), is_sample: false, status_label, tone, alarm, mode,
+            pose, inliers: l["inliers"].as_i64(), guidance, warning_level: level, warning_text: l["warning"]["text"].as_str().unwrap_or("").to_string(),
+            ref_quad, w: c["w"].as_f64().filter(|w| *w > 0.0).unwrap_or(1280.0), h: c["h"].as_f64().filter(|h| *h > 0.0).unwrap_or(720.0),
+            frame_url: format!("/api/live/{id}/frame.jpg"), reference_url: None,
+            height_m, fisheye, method: "live calibration".into(), auto_height, pending,
+            sub: format!("{} · {:.0} fps · {} frames{}", c["source"].as_str().unwrap_or("live"), c["fps"].as_f64().unwrap_or(0.0), c["frames"].as_u64().unwrap_or(0),
+                         height_m.map(|h| format!(" · h {h:.1} m")).unwrap_or_default()),
+            error, id, ..Default::default()
+        }
+    }
+
+    /// Fill calibration values and rule ids that the live snapshot does not carry.
+    pub fn with_site(mut self, site: &Site) -> Self {
+        if self.is_sample { return self; }
+        if let Some(t) = site.twin.read().unwrap().as_ref() {
+            if let Some(tc) = t.cameras.iter().find(|c| c.id.eq_ignore_ascii_case(&self.id)) {
+                self.pitch_deg = Some(tc.camera.pitch_deg);
+                if tc.lens.is_none() && tc.width > 0 && tc.camera.f_px > 0.0 {
+                    self.hfov_deg = Some(2.0 * (tc.width as f64 / 2.0 / tc.camera.f_px).atan().to_degrees());
+                }
+                if self.height_m.is_none() { self.height_m = Some(tc.camera.height_m); }
+                self.method = "Rig Twin".into();
+            }
+        }
+        self.rules = site.iogp.rules.iter().map(|r| r.id.clone()).collect();
+        self
+    }
+}
+
+/// Live cameras from the snapshot.
+pub fn live_views(site: &Site) -> Vec<CamView> {
+    site.live.snapshot()["cameras"].as_array().into_iter().flatten().map(|c| CamView::from_live(c).with_site(site)).collect()
+}
+
+/// Cameras the alarm count / banner / header pill are built from: live cameras when any exist
+/// (samples are excluded), otherwise the static samples. Returns (alarmed cameras, live cameras present).
+pub fn alarm_cams(site: &Site) -> (Vec<CamView>, bool) {
+    let lv = live_views(site);
+    if lv.is_empty() {
+        (site.cams.iter().map(CamView::from_sample).filter(|c| c.alarm).collect(), false)
+    } else {
+        (lv.into_iter().filter(|c| c.alarm).collect(), true)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn live_full() {
+        let v = CamView::from_live(&json!({"id":"CAM-02","label":"Deck","source":"rtsp","w":640,"h":360,"fisheye":false,"fps":9.5,"frames":42,
+            "latest":{"status":"Moved","mode":"Compensated","pose":{"dx":0.05,"dy":-0.02,"angle":1.5,"scale":1.01,"corner":0.06},"inliers":88,
+            "ref_box":[[0,0],[10,0],[10,10],[0,10]],"guidance":["move left"],"pending":{"status":"Moved","elapsed_s":1.5},
+            "height_m":11.0,"auto_height":{"state":"estimating","value":10.5,"samples":7},"warning":{"level":"alarm","text":"camera moved"}}}));
+        assert!(v.alarm && v.tone == "bad" && !v.is_sample);
+        assert_eq!(v.status_label, "CAMERA MOVED");
+        assert_eq!(v.mode, "Compensated");
+        assert_eq!(v.inliers, Some(88));
+        assert_eq!(v.ref_quad.unwrap()[1], [10.0, 0.0]);
+        assert_eq!((v.w, v.h), (640.0, 360.0));
+        assert_eq!(v.frame_url, "/api/live/CAM-02/frame.jpg");
+        assert_eq!(v.warning_text, "camera moved");
+        assert!(v.auto_height.unwrap().contains("10.5"));
+        assert!(v.pending.unwrap().contains("1.5"));
+    }
+
+    #[test]
+    fn live_missing_fields() {
+        let v = CamView::from_live(&json!({"id":"X"}));
+        assert!(!v.alarm && v.tone == "warn");
+        assert_eq!(v.status_label, "STARTING");
+        assert_eq!((v.w, v.h), (1280.0, 720.0));
+        assert!(v.pose.is_none() && v.ref_quad.is_none() && v.guidance.is_empty() && v.auto_height.is_none());
+        assert_eq!(v.mode, "Aligned");
+        let e = CamView::from_live(&json!({"id":"X","error":"no stream","latest":{"status":"Ok","warning":{"level":"alarm","text":"t"}}}));
+        assert!(e.alarm && e.tone == "bad");
+        let s = CamView::from_live(&json!({"id":"X","latest":{"smoothed_pose":{"dx":0.1},"ref_box":[[1,2]]}}));
+        assert_eq!(s.pose.unwrap().dx, 0.1);
+        assert!(s.ref_quad.is_none());
+    }
 }
 
 // ───────────────────────────── overview ─────────────────────────────
@@ -38,7 +230,10 @@ fn alert_counts(site: &Site) -> BTreeMap<String, usize> {
 pub async fn overview(cx: &Cx) -> Result<impl View> {
     let site = context::<Site>(cx);
     let (ok, vtxt) = verify_text(&site.ledger_check);
-    let alarms: Vec<&Cam> = site.cams.iter().filter(|c| c.guard != Status::Ok).collect();
+    let (alarms, live_present) = alarm_cams(site);
+    let mut cards = live_views(site);
+    cards.extend(site.cams.iter().map(CamView::from_sample));
+    let n_live = cards.iter().filter(|c| !c.is_sample).count();
     let armed = site.iogp.armed();
     let feed: Vec<_> = site.ledger.entries.iter().rev().take(12).collect();
     let counts = alert_counts(site);
@@ -51,10 +246,10 @@ pub async fn overview(cx: &Cx) -> Result<impl View> {
                 " — " (live_alerts) " alert(s) since start (armed sound, shadow logged)." <span class="go">"Open live console →"</span></a>
         }
         <section class="kpis">
-            <div class="kpi"><b>(site.cams.len())</b><span>"cameras"</span><em>"5 rectilinear · 1 fisheye"</em></div>
+            <div class="kpi"><b>(cards.len())</b><span>"cameras"</span><em>if live_present { (n_live) " live · " (site.cams.len()) " sample" } else { "5 rectilinear · 1 fisheye (sample data)" }</em></div>
             <div class=(class!("kpi", "bad" if !alarms.is_empty()))>
-                <b>(alarms.len())</b><span>"camera-guard alarms"</span>
-                <em>for c in &alarms { (c.id) " " (c.guard.label()) }</em>
+                <b>(alarms.len())</b><span>if live_present { "camera-guard alarms (live)" } else { "camera-guard alarms (sample data)" }</span>
+                <em>for c in &alarms { (c.id.clone()) " " (c.status_label.clone()) " · " }</em>
             </div>
             <div class="kpi"><b>(site.ledger.entries.len())</b><span>"alerts in evidence ledger"</span>
                 <em>for (k, n) in &counts { (k) " " (n) " · " }</em></div>
@@ -65,31 +260,34 @@ pub async fn overview(cx: &Cx) -> Result<impl View> {
                 <em>if site.iogp.draft { "draft config — approve in iogp-editor" } else { "approved and MCC ≥ floor" }</em></div>
         </section>
         if let Some(c) = alarms.first() {
-            <a class="banner bad" href=(href!(camera, id: c.id))>
-                <strong>(c.id) " · " (c.guard.label())</strong>
-                if c.mode == Mode::Compensated {
-                    " — analytics continue through shift compensation; please re-aim the camera. "
+            <a class="banner bad" href=(format!("/cameras/{}", c.id))>
+                <strong>(c.id.clone()) " · " (c.status_label.clone())</strong>
+                if c.is_sample {
+                    if c.mode == "Compensated" {
+                        " — analytics continue through shift compensation; please re-aim the camera. "
+                    } else {
+                        " — analytics paused on this camera (ground calibration no longer valid). "
+                    }
                 } else {
-                    " — analytics paused on this camera (ground calibration no longer valid). "
+                    " — " (c.warning_text.clone()) " "
                 }
-                (c.guidance().join(" · "))
+                (c.guidance.join(" · "))
                 <span class="go">"Open guidance →"</span>
             </a>
         }
         <div class="cols">
             <section class="grid">
-                for c in &site.cams {
-                    let tone = guard_tone(c.guard);
-                    <a class=(class!("card", "cam", "alarm" if c.guard != Status::Ok)) href=(href!(camera, id: c.id))>
+                for c in &cards {
+                    <a class=(class!("card", "cam", "alarm" if c.alarm && (!c.is_sample || !live_present))) href=(format!("/cameras/{}", c.id))>
                         <div class="thumb">
-                            <img src=(c.frame) alt=(c.name) loading="lazy">
-                            <span class=(class!("pill", tone))>(c.guard.label())</span>
-                            <span class="lens">(lens_label(c.lens))</span>
+                            <img src=(c.frame_url.clone()) alt=(c.name.clone()) loading="lazy">
+                            <span class=(class!("pill", c.tone))>(c.status_label.clone())</span>
+                            <span class="lens">if c.is_sample && live_present { "sample · " } (lens_text(c.fisheye))</span>
                         </div>
                         <div class="meta">
-                            <div><strong>(c.id)</strong> " " (c.name)</div>
-                            <div class="sub">(format!("{:.0} fps · {:.0} ms/frame · h {:.0} m · pitch {:.0}°", c.fps, c.infer_ms, c.height_m, c.pitch_deg))</div>
-                            <div class="chips">for r in c.rules { <span class="chip">(*r)</span> }</div>
+                            <div><strong>(c.id.clone())</strong> " " (c.name.clone()) if c.is_sample && live_present { " " <span class="chip">"sample"</span> }</div>
+                            <div class="sub">(c.sub.clone())</div>
+                            <div class="chips">for r in &c.rules { <span class="chip">(r.clone())</span> }</div>
                         </div>
                     </a>
                 }
@@ -119,36 +317,46 @@ path_param!(id);
 #[page("/cameras/{id}")]
 pub async fn camera(cx: &Cx) -> Result<impl View> {
     let site = context::<Site>(cx);
-    let c = site.cam(id(cx)).ok_or_else(not_found)?;
-    let tone = guard_tone(c.guard);
-    let overlay = c.ref_quad.map(|q| {
+    let want = id(cx);
+    let v = live_views(site).into_iter().find(|c| c.id.eq_ignore_ascii_case(&want))
+        .or_else(|| site.cam(&want).map(CamView::from_sample))
+        .ok_or_else(not_found)?;
+    let overlay = v.ref_quad.map(|q| {
         let pts: Vec<String> = q.iter().map(|p| format!("{:.1},{:.1}", p[0], p[1])).collect();
         let (cx0, cy0) = (q.iter().map(|p| p[0]).sum::<f64>() / 4.0, q.iter().map(|p| p[1]).sum::<f64>() / 4.0);
         Trusted(format!(
-            r##"<svg class="ov" viewBox="0 0 1280 720" preserveAspectRatio="none">
+            r##"<svg class="ov" viewBox="0 0 {:.0} {:.0}" preserveAspectRatio="none">
 <polygon points="{}" class="refbox"/>
-<line x1="640" y1="360" x2="{cx0:.0}" y2="{cy0:.0}" class="arrow" marker-end="url(#ah)"/>
+<line x1="{:.0}" y1="{:.0}" x2="{cx0:.0}" y2="{cy0:.0}" class="arrow" marker-end="url(#ah)"/>
 <defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#38bdf8"/></marker></defs>
 <text x="{:.0}" y="{:.0}" class="reflabel">correct view is here</text></svg>"##,
-            pts.join(" "), q[0][0] + 14.0, q[0][1].max(0.0) + 34.0))
+            v.w, v.h, pts.join(" "), v.w / 2.0, v.h / 2.0, q[0][0] + 14.0, q[0][1].max(0.0) + 34.0))
     });
-    let guidance = c.guidance();
-    let cam_rules: Vec<_> = c.rules.iter().filter_map(|r| site.iogp.get(r).map(|rr| (*r, rr))).collect();
-    let fisheye = matches!(c.lens, Lens::Fisheye);
+    let refresh = (!v.is_sample).then(|| Trusted("<script>setTimeout(function(){location.reload()},2000)</script>".into()));
+    let cam_rules: Vec<_> = v.rules.iter().filter_map(|r| site.iogp.get(r).map(|rr| (r.clone(), rr))).collect();
+    let paused = v.mode == "Paused";
+    let compensated = v.mode == "Compensated";
+    // "position correct" only when there is a guard measurement and no warning at all (a starting or
+    // errored live camera has neither, and must not claim its position is correct)
+    let ok = !v.alarm && v.warning_level == "ok" && (v.is_sample || v.pose.is_some());
+    let rereference = format!("VG360_CAM_{}_REREFERENCE", v.id.replace('-', "_"));
+    let rereference_file = format!("state/reference/{}.png", v.id);
     Ok(view! {
-        <div class="crumbs"><a href=(href!(overview))>"Overview"</a> " / " (c.id)</div>
-        <h1>(c.id) " · " (c.name) <span class=(class!("pill", tone))>(c.guard.label())</span></h1>
+        <div class="crumbs"><a href=(href!(overview))>"Overview"</a> " / " (v.id.clone())</div>
+        <h1>(v.id.clone()) " · " (v.name.clone()) <span class=(class!("pill", v.tone))>(v.status_label.clone())</span>
+            if v.is_sample { " " <span class="chip">"sample"</span> } else { " " <span class="chip">"live"</span> }</h1>
+        if let Some(e) = &v.error { <div class="banner bad"><strong>"stream error: "</strong>(e.clone())</div> }
         <div class="cols wide">
             <section class="card frame">
                 <div class="stage">
-                    <img src=(c.frame) alt=(c.name)>
+                    <img src=(v.frame_url.clone()) alt=(v.name.clone())>
                     if let Some(o) = overlay { (o) }
-                    if let Some(r) = c.reference {
-                        <figure class="inset"><img src=(r) alt="reference view"><figcaption>"reference view"</figcaption></figure>
+                    if let Some(r) = &v.reference_url {
+                        <figure class="inset"><img src=(r.clone()) alt="reference view"><figcaption>"reference view"</figcaption></figure>
                     }
                 </div>
                 <div class="caption">
-                    if c.guard == Status::Ok {
+                    if ok {
                         "Live analytics overlay: ground-plane boxes, zones, track IDs (rendered by the inference worker)."
                     } else {
                         "Camera guard overlay: blue box = where the reference view now sits in the live image. Follow the arrow until the box fills the frame."
@@ -156,41 +364,49 @@ pub async fn camera(cx: &Cx) -> Result<impl View> {
                 </div>
             </section>
             <aside class="stack">
-                <section class=(class!("card", "guard", tone))>
+                <section class=(class!("card", "guard", v.tone))>
                     <h3>"Camera guard" <small>"FAST/BRIEF · Hamming · MSAC — pure Rust"</small></h3>
-                    <div class="metrics">
-                        <div><span>"shift x"</span><b>(pct(c.pose.dx))</b></div>
-                        <div><span>"shift y"</span><b>(pct(c.pose.dy))</b></div>
-                        <div><span>"rotation"</span><b>(format!("{:.1}°", c.pose.angle))</b></div>
-                        <div><span>"zoom"</span><b>(format!("{:.1}%", (c.pose.scale - 1.0) * 100.0 + 0.0).replace("-0.0", "0.0"))</b></div>
-                        <div><span>"corner shift"</span><b>(pct(c.pose.corner))</b></div>
-                        <div><span>"inliers"</span><b>(c.inliers)</b></div>
-                    </div>
-                    if guidance.is_empty() {
+                    if let Some(p) = &v.pose {
+                        <div class="metrics">
+                            <div><span>"shift x"</span><b>(pct(p.dx))</b></div>
+                            <div><span>"shift y"</span><b>(pct(p.dy))</b></div>
+                            <div><span>"rotation"</span><b>(format!("{:.1}°", p.angle))</b></div>
+                            <div><span>"zoom"</span><b>(format!("{:.1}%", (p.scale - 1.0) * 100.0 + 0.0).replace("-0.0", "0.0"))</b></div>
+                            <div><span>"corner shift"</span><b>(pct(p.corner))</b></div>
+                            <div><span>"inliers"</span><b>(v.inliers.map_or("—".to_string(), |n| n.to_string()))</b></div>
+                        </div>
+                    } else {
+                        <p class="note">"No guard measurement yet (the worker is starting, or no pose was reported for this frame)."</p>
+                    }
+                    if let Some(p) = &v.pending { <p class="note">"Pending change: " (p.clone())</p> }
+                    if !v.warning_text.is_empty() && !v.is_sample { <p class=(class!("note", "okline" if v.warning_level == "ok"))>(v.warning_text.clone())</p> }
+                    if ok && v.guidance.is_empty() {
                         <p class="okmsg">"Position correct — within " (pct(gc::OK_SHIFT)) " shift, " (gc::OK_ROT) "° rotation."</p>
                     } else {
-                        <ol class="guide">for g in &guidance { <li>(g.clone())</li> }</ol>
-                        if c.mode == Mode::Compensated {
+                        <ol class="guide">for g in &v.guidance { <li>(g.clone())</li> }</ol>
+                        if compensated {
                             <p class="note okline">"Analytics continue: the move is small (≤ 8 % shift, ≤ 5° rotation, ≥ 60 matched points), so detections are mapped back through the measured homography H⁻¹ onto the original deck calibration. Results from this camera carry "
                                 <code>"mode: Compensated"</code> ". The alarm stays until the view is re-aimed and aligned for " (gc::OK_HOLD) " s."</p>
-                        } else {
+                        } else if paused && v.error.is_none() {
                             <p class="note">"Analytics paused: the move is too large to compensate (or the view is blocked / lost). Rules on this camera are suspended until the view is aligned for " (gc::OK_HOLD) " s."</p>
                         }
-                        <div class="btns"><button disabled=(true)>"Re-capture reference"</button><button disabled=(true)>"Recalibrate deck points"</button></div>
+                        <p class="note"><b>"Re-baseline: "</b>"If the camera was deliberately re-mounted, delete " <code>(rereference_file.clone())</code> " (or set " <code>(rereference.clone()) "=1"</code>
+                            ") and restart; recalibrate with " <code>"POST /api/calibrate"</code> " or the Rig Twin."</p>
                     }
                 </section>
                 <section class="card">
                     <h3>"Ground calibration"</h3>
                     <dl>
-                        <dt>"analytics"</dt><dd>(match c.mode { Mode::Aligned => "running", Mode::Compensated => "running · shift-compensated", Mode::Paused => "paused" })</dd>
-                        <dt>"method"</dt><dd>(c.calib_method)</dd>
-                        <dt>"mount height"</dt><dd>(format!("{:.1} m", c.height_m))</dd>
-                        <dt>"pitch"</dt><dd>(format!("{:.0}°", c.pitch_deg))</dd>
-                        <dt>"field of view"</dt><dd>(format!("{:.0}°", c.hfov_deg))</dd>
-                        <dt>"deck RMS"</dt><dd>(format!("{:.3} m", c.calib_rms_m))</dd>
-                        <dt>"lens"</dt><dd>(lens_label(c.lens))</dd>
+                        <dt>"analytics"</dt><dd>(if paused { "paused" } else if compensated { "running · shift-compensated" } else { "running" })</dd>
+                        <dt>"method"</dt><dd>(v.method.clone())</dd>
+                        <dt>"mount height"</dt><dd>(v.height_m.map_or("not set".to_string(), |h| format!("{h:.1} m")))</dd>
+                        if let Some(a) = &v.auto_height { <dt>"auto-height"</dt><dd>(a.clone())</dd> }
+                        <dt>"pitch"</dt><dd>(v.pitch_deg.map_or("—".to_string(), |x| format!("{x:.0}°")))</dd>
+                        <dt>"field of view"</dt><dd>(v.hfov_deg.map_or("—".to_string(), |x| format!("{x:.0}°")))</dd>
+                        if let Some(r) = v.rms_m { <dt>"deck RMS"</dt><dd>(format!("{r:.3} m"))</dd> }
+                        <dt>"lens"</dt><dd>(lens_text(v.fisheye))</dd>
                     </dl>
-                    if fisheye {
+                    if v.fisheye {
                         <p class="note">"Fisheye: detection runs on 3 upright virtual pinhole views; ground points use the Kannala–Brandt ray directly (error 0.005 m at 1 m → 0.039 m at 30 m in the notebook self-test)."</p>
                     }
                 </section>
@@ -198,12 +414,12 @@ pub async fn camera(cx: &Cx) -> Result<impl View> {
                     <h3>"Rules on this camera"</h3>
                     <ul class="rl">
                         for (rid, r) in cam_rules {
-                            let pass = r.armed && c.mode != Mode::Paused;
+                            let pass = r.armed && !paused;
                             <li>
                                 <span class="chip">(rid)</span>
                                 <span>(r.alert.clone())</span>
                                 <span class=(class!("pill", "ok" if pass, "warn" if !pass))>
-                                    if c.mode == Mode::Paused { "paused" } else if !r.armed { "shadow" } else if c.mode == Mode::Compensated { "armed · compensated" } else { "armed" }
+                                    if paused { "paused" } else if !r.armed { "shadow" } else if compensated { "armed · compensated" } else { "armed" }
                                 </span>
                             </li>
                         }
@@ -211,6 +427,7 @@ pub async fn camera(cx: &Cx) -> Result<impl View> {
                 </section>
             </aside>
         </div>
+        if let Some(r) = refresh { (r) }
     })
 }
 
@@ -317,7 +534,7 @@ pub async fn twin(cx: &Cx) -> Result<impl View> {
                                 <td class="num">(format!("{:.0}°", c.camera.pitch_deg))</td>
                                 <td class="num">(format!("{:.0} px", c.camera.f_px))</td>
                                 <td class="num">(format!("{}×{}", c.width, c.height))</td>
-                                <td>if let Some(r) = rms { <span class=(class!("pill", "ok" if r < 1.0, "warn" if r >= 1.0))>(format!("{r:.2} px · {} pts", c.points.len()))</span> } else { <span class="sub">"no deck points in view"</span> }</td>
+                                <td>if let Some(r) = rms { <span class=(class!("pill", "ok" if r < 1.0, "warn" if r >= 1.0))>(format!("{r:.2} px · {} pts", c.points.len()))</span> } else { <span class="sub">if c.lens.is_some() { "not computed for fisheye" } else { "no deck points in view" }</span> }</td>
                             </tr>
                         }
                     </tbody>
@@ -443,10 +660,11 @@ pub async fn settings(cx: &Cx) -> Result<impl View> {
         ("OK_SHIFT", pct(gc::OK_SHIFT)), ("OK_ROT", format!("{}°", gc::OK_ROT)), ("MOVED_HOLD", format!("{} s", gc::MOVED_HOLD)),
         ("BLOCKED_HOLD", format!("{} s", gc::BLOCKED_HOLD)), ("LOST_HOLD", format!("{} s", gc::LOST_HOLD)), ("MIN_INLIERS", gc::MIN_INLIERS.to_string()),
     ];
-    let twin_cams: Vec<(String, String, String, bool, bool)> = site.twin.read().unwrap().as_ref().map(|t| t.cameras.iter().map(|c| {
+    let twin_cams: Vec<(String, String, String, bool, bool, bool)> = site.twin.read().unwrap().as_ref().map(|t| t.cameras.iter().map(|c| {
         let env = format!("VG360_CAM_{}_URL", c.id.replace('-', "_"));
         let ah = std::env::var(format!("VG360_CAM_{}_AUTO_HEIGHT", c.id.replace('-', "_"))).is_ok_and(|v| v == "1");
-        (c.id.clone(), format!("{} · {}×{}", if c.lens.is_some() { "fisheye" } else { "pinhole" }, c.width, c.height), env.clone(), std::env::var(&env).is_ok(), ah)
+        let rr = std::env::var(format!("VG360_CAM_{}_REREFERENCE", c.id.replace('-', "_"))).is_ok_and(|v| v == "1");
+        (c.id.clone(), format!("{} · {}×{}", if c.lens.is_some() { "fisheye" } else { "pinhole" }, c.width, c.height), env.clone(), std::env::var(&env).is_ok(), ah, rr)
     }).collect()).unwrap_or_default();
     Ok(view! {
         <h1>"Settings"</h1>
@@ -454,14 +672,15 @@ pub async fn settings(cx: &Cx) -> Result<impl View> {
             <section class="card">
                 <h3>"Camera streams" <small>"cameras of the applied Rig Twin"</small></h3>
                 <p class="note">"Stream URLs (with credentials) are never stored in the repository or shown here. A live worker starts for every twin camera whose "
-                    <code>"VG360_CAM_<ID>_URL"</code> " is set on this host; " <code>"VG360_CAM_<ID>_AUTO_HEIGHT=1"</code> " estimates its mount height from standing workers."</p>
+                    <code>"VG360_CAM_<ID>_URL"</code> " is set on this host; " <code>"VG360_CAM_<ID>_AUTO_HEIGHT=1"</code> " estimates its mount height from standing workers; " <code>"VG360_CAM_<ID>_REREFERENCE=1"</code> " re-captures the reference view at the next start (use after a deliberate re-mount, then unset it)."</p>
                 <table class="mini">
-                    <thead><tr><th>"Camera"</th><th>"Lens · resolution"</th><th>"Environment variable"</th><th>"Stream"</th><th>"Auto-height"</th></tr></thead>
+                    <thead><tr><th>"Camera"</th><th>"Lens · resolution"</th><th>"Environment variable"</th><th>"Stream"</th><th>"Auto-height"</th><th>"Re-reference"</th></tr></thead>
                     <tbody>
                         for c in &twin_cams {
                             <tr><td>(c.0.clone())</td><td>(c.1.clone())</td><td><code>(c.2.clone())</code></td>
                                 <td><span class=(class!("pill", "ok" if c.3, "warn" if !c.3))>if c.3 { "set · live" } else { "not set" }</span></td>
-                                <td>if c.4 { <span class="pill ok">"on"</span> } else { "—" }</td></tr>
+                                <td>if c.4 { <span class="pill ok">"on"</span> } else { "—" }</td>
+                                <td>if c.5 { <span class="pill warn">"set — unset after restart"</span> } else { "—" }</td></tr>
                         }
                     </tbody>
                 </table>
@@ -492,9 +711,9 @@ pub async fn settings(cx: &Cx) -> Result<impl View> {
 pub async fn live(cx: &Cx) -> Result<impl View> {
     let site = context::<Site>(cx);
     let snap = site.live.snapshot();
-    let cams: Vec<(String, String, u64, u64)> = snap["cameras"].as_array().into_iter().flatten()
+    let cams: Vec<(String, String, u64, u64, Option<String>)> = snap["cameras"].as_array().into_iter().flatten()
         .map(|c| (c["id"].as_str().unwrap_or("").to_string(), c["label"].as_str().unwrap_or("").to_string(),
-                  c["w"].as_u64().unwrap_or(1280), c["h"].as_u64().unwrap_or(720))).collect();
+                  c["w"].as_u64().unwrap_or(1280), c["h"].as_u64().unwrap_or(720), c["error"].as_str().map(|e| format!("error: {e}")))).collect();
     let sig = site.live.signals.read().unwrap().clone();
     Ok(view! {
         <h1>"Live analytics" <span class="pill" id="live-state">"connecting…"</span></h1>
@@ -505,14 +724,14 @@ pub async fn live(cx: &Cx) -> Result<impl View> {
         }
         <div class="cols wide">
             <section class="livegrid">
-                for (id, label, w, h) in &cams {
+                for (id, label, w, h, err) in &cams {
                     <figure class="card frame live" data-cam=(id.clone())>
                         <div class="stage">
                             <img class="lv" alt=(label.clone()) src=(format!("/api/live/{id}/frame.jpg")) style=(format!("aspect-ratio: {w} / {h}"))>
                             <svg class="ov" viewBox=(format!("0 0 {w} {h}")) preserveAspectRatio="none"></svg>
                             <span class="pill livebadge">"LIVE"</span>
                         </div>
-                        <figcaption class="caption"><strong>(id.clone())</strong> " " (label.clone()) " · " <span class="stat">"starting…"</span></figcaption>
+                        <figcaption class="caption"><strong>(id.clone())</strong> " " (label.clone()) " · " <span class=(class!("stat", "bad" if err.is_some()))>(err.clone().unwrap_or_else(|| "starting… (connecting to the stream)".into()))</span></figcaption>
                     </figure>
                 }
             </section>

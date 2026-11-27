@@ -19,14 +19,16 @@
 //! worker seen by two views is merged (feet closer than 0.8 m, larger box kept) and one tracker runs over
 //! all of them (notebook §9b). Boxes are reported in fisheye pixels. A homography cannot describe a moved
 //! fisheye, so a measured move pauses analytics instead of compensating.
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use vg360_guard::aligner::{Aligner, Measure};
-use vg360_guard::config::{ANALYSIS_W, CONFIRM_INLIERS};
+use vg360_guard::config::{ANALYSIS_W, CONFIRM_INLIERS, REF_CAPTURE_S};
 use vg360_guard::grabber::Grabber;
 use vg360_guard::policy::{Guard, Observation, Pose, Status, is_aligned};
 use vg360_infer::fisheye::{FisheyeCam, View};
@@ -60,23 +62,27 @@ pub enum Mode {
     Paused,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct WorkerCfg {
     /// run the guard on every n-th frame (camera_guard: 4 Hz)
     pub guard_every: usize,
     pub tiles: usize,
     pub limits: CompLimits,
-    /// rule engine drop-out tolerance (s)
-    pub rule_gap_s: f64,
     /// attach a JPEG of the live frame to every n-th result (0 = never), for live views
     pub snapshot_every: usize,
     /// estimate the mount height from the first `n` person boxes (assumed 1.70 m standing) before any rule is
     /// evaluated — for cameras calibrated from vanishing points, whose height is unknown (0 = off; pinhole only)
     pub auto_height_boxes: usize,
+    /// distinct people (tracks, one sample each) auto-height needs, at least; the bar is `max(this, auto_height_boxes / 3)`
+    pub auto_height_min_tracks: usize,
+    /// a reference with fewer background points than this is refused (too dark, flat or featureless to guard)
+    pub min_ref_points: usize,
+    /// where `spawn_stream_ref` keeps `{camera}.png` + `{camera}.json` (None = reference is not persisted)
+    pub reference_dir: Option<PathBuf>,
 }
 
 impl Default for WorkerCfg {
-    fn default() -> Self { Self { guard_every: 3, tiles: 3, limits: CompLimits::default(), rule_gap_s: 0.5, snapshot_every: 0, auto_height_boxes: 0 } }
+    fn default() -> Self { Self { guard_every: 3, tiles: 3, limits: CompLimits::default(), snapshot_every: 0, auto_height_boxes: 0, auto_height_min_tracks: 3, min_ref_points: 80, reference_dir: None } }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -85,8 +91,22 @@ pub struct FrameResult {
     pub t: f64,
     pub status: Status,
     pub mode: Mode,
+    /// this tick's raw measured pose (None when the last guard tick had no fix)
     pub pose: Option<Pose>,
+    /// median of the guard's last few fixes (what the status and the compensation decision follow)
+    pub smoothed_pose: Option<Pose>,
     pub inliers: i32,
+    /// background points in the reference view
+    pub ref_points: i32,
+    /// candidate guard status waiting out its hold time, with seconds elapsed so far
+    pub guard_pending: Option<(String, f64)>,
+    /// why no analytics ran on this frame ("lens blocked" / "view not recognised"): no detections, no scene,
+    /// no rule evaluated, from the first bad guard tick on. The alarm `status` still follows the guard hold times.
+    pub analytics_suspended: Option<String>,
+    /// age of the frame at the grabber when it was handed over (spawn_stream only)
+    pub frame_age_s: Option<f64>,
+    /// auto-height progress (None when auto-height is off)
+    pub auto_height: Option<AutoHeight>,
     /// reference-view corners in live pixels (the "correct view is here" box)
     pub ref_box: Option<[[f64; 2]; 4]>,
     /// detections in live-image pixels
@@ -97,12 +117,17 @@ pub struct FrameResult {
     pub ms: f64,
     /// mount height in use (m); changes once when auto-height finishes
     pub height_m: f64,
-    /// auto-height still collecting boxes: people are tracked but no rule is evaluated
+    /// auto-height still collecting boxes: people are tracked but no rule is evaluated. After a failed
+    /// estimate this is false but rules stay off (see `auto_height.state == "failed"`).
     pub calibrating: bool,
     /// live-view JPEG (see `WorkerCfg::snapshot_every`)
     #[serde(skip)]
     pub jpeg: Option<Vec<u8>>,
 }
+
+/// Mount-height estimation progress. `state`: "estimating" | "set" | "failed".
+#[derive(Clone, Debug, Serialize)]
+pub struct AutoHeight { pub state: &'static str, pub value: Option<f64>, pub samples: usize }
 
 /// One raised or cleared rule alert, with whether it sounds and where its evidence went.
 #[derive(Clone, Debug, Serialize)]
@@ -160,6 +185,58 @@ pub fn compensation_mode(m: &Measure, l: &CompLimits) -> Mode {
     if ok { Mode::Compensated } else { Mode::Paused }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum AhState { Estimating, Set, Failed }
+
+/// Camera events (guard changes, reference, height) are written to vesdb from a background thread so the
+/// frame loop never waits on HTTP. Bounded: when vesdb is slower than the events arrive, they are dropped and counted.
+struct EvidenceQueue { tx: mpsc::SyncSender<(String, serde_json::Value)>, errors: Arc<AtomicU64> }
+
+impl EvidenceQueue {
+    fn new(v: Arc<Vesdb>, camera: String) -> Self {
+        let (tx, rx) = mpsc::sync_channel::<(String, serde_json::Value)>(64);
+        let errors = Arc::new(AtomicU64::new(0));
+        let e2 = errors.clone();
+        thread::spawn(move || {
+            for (ty, data) in rx {
+                if let Err(e) = v.camera_event(&camera, &ty, data) {
+                    e2.fetch_add(1, Ordering::Relaxed);
+                    let msg: String = e.to_string().chars().take(160).collect();
+                    eprintln!("vg360-pipeline: evidence event {ty} for {camera} failed: {msg}");
+                }
+            }
+        });
+        Self { tx, errors }
+    }
+    fn push(&self, ty: &str, data: serde_json::Value) {
+        if self.tx.try_send((ty.to_string(), data)).is_err() {
+            self.errors.fetch_add(1, Ordering::Relaxed);
+            eprintln!("vg360-pipeline: evidence queue full, dropped {ty}");
+        }
+    }
+}
+
+/// What a reference capture produced.
+#[derive(Clone, Debug)]
+pub struct RefInfo { pub points: usize, pub mean: f64, pub std: f64, pub sha256: String }
+
+/// Why a candidate reference view is unusable (None = usable).
+pub fn reference_problem(q: &vg360_guard::aligner::RefQuality, min_points: usize) -> Option<String> {
+    if q.mean < 15.0 { return Some(format!("too dark (mean {:.0})", q.mean)); }
+    if q.std < 10.0 { return Some(format!("flat, no contrast (std {:.1})", q.std)); }
+    if q.points < min_points { return Some(format!("only {} background points, need {min_points}", q.points)); }
+    None
+}
+
+fn lift(m: &Measure, img_w: usize) -> Option<M3> {
+    // aligner H is reference → live at analysis resolution; lift to full resolution and invert
+    let s = ANALYSIS_W as f64 / img_w as f64;
+    let sm: M3 = [[s, 0.0, 0.0], [0.0, s, 0.0], [0.0, 0.0, 1.0]];
+    let si: M3 = [[1.0 / s, 0.0, 0.0], [0.0, 1.0 / s, 0.0], [0.0, 0.0, 1.0]];
+    let h = invert(&mul(&si, &mul(&m.h, &sm)))?;
+    h.iter().flatten().all(|v| v.is_finite()).then_some(h)
+}
+
 pub struct CameraWorker {
     pub id: String,
     pub cfg: WorkerCfg,
@@ -171,16 +248,22 @@ pub struct CameraWorker {
     pub rules: Arc<RuleSet>,
     engine: Engine,
     evidence: Option<Arc<Vesdb>>,
+    ev_queue: Option<EvidenceQueue>,
     pub provenance: Provenance,
     frame_no: usize,
     last_reported: Option<(Status, Mode)>,
+    last_mode_event_t: f64,
     last: Option<Measure>,
     mode: Mode,
+    suspended: Option<&'static str>,
     /// live → reference, full-resolution pixels
     cur_to_ref: M3,
     fisheye: Option<FisheyeRig>,
-    auto_boxes: Vec<[f64; 4]>,
-    auto_done: bool,
+    ah_state: AhState,
+    ah_tracks: BTreeMap<u64, Vec<(f64, [f64; 4])>>,
+    ah_rejects: u32,
+    ah_t0: Option<f64>,
+    ah_value: Option<f64>,
 }
 
 /// A fisheye camera and the upright virtual views it is analysed through.
@@ -218,13 +301,25 @@ impl FisheyeRig {
 }
 
 const I3: M3 = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+const AH_MAX_REJECTS: u32 = 5;
+const AH_TIMEOUT_S: f64 = 300.0;
+/// at most this many samples per tracked person, at least `AH_SPACING_S` apart
+const AH_PER_TRACK: usize = 4;
+const AH_SPACING_S: f64 = 0.5;
+
+fn within(l: &CompLimits, p: &Pose) -> bool {
+    p.dx.abs() <= l.max_shift && p.dy.abs() <= l.max_shift && p.angle.abs() <= l.max_rot_deg && (p.scale - 1.0).abs() <= l.max_scale
+}
 
 impl CameraWorker {
     pub fn new(id: &str, det: Yolox, ppe: Option<Ppe>, scene: Scene, rules: Arc<RuleSet>, cfg: WorkerCfg) -> Self {
         let engine = rules.deployed.engine();
-        Self { id: id.into(), cfg, aligner: Aligner::new(), guard: Guard::default(), det, ppe, scene, rules, engine,
-               evidence: None, provenance: Provenance::default(), frame_no: 0, last_reported: None, last: None, mode: Mode::Aligned, cur_to_ref: I3,
-               fisheye: None, auto_boxes: vec![], auto_done: false }
+        let mut w = Self { id: id.into(), cfg, aligner: Aligner::new(), guard: Guard::default(), det, ppe, scene, rules, engine,
+               evidence: None, ev_queue: None, provenance: Provenance::default(), frame_no: 0, last_reported: None, last_mode_event_t: f64::NEG_INFINITY,
+               last: None, mode: Mode::Aligned, suspended: None, cur_to_ref: I3, fisheye: None,
+               ah_state: AhState::Estimating, ah_tracks: BTreeMap::new(), ah_rejects: 0, ah_t0: None, ah_value: None };
+        w.refresh_calibration_hash();
+        w
     }
 
     /// Analyse this camera as a fisheye through upright virtual views (see the module docs).
@@ -232,18 +327,43 @@ impl CameraWorker {
 
     pub fn is_fisheye(&self) -> bool { self.fisheye.is_some() }
 
-    /// Write incidents and camera-guard changes to vesdb.
-    pub fn with_evidence(mut self, v: Arc<Vesdb>, provenance: Provenance) -> Self { self.evidence = Some(v); self.provenance = provenance; self }
+    /// Write incidents and camera-guard changes to vesdb (camera events go through a background thread).
+    pub fn with_evidence(mut self, v: Arc<Vesdb>, provenance: Provenance) -> Self {
+        self.ev_queue = Some(EvidenceQueue::new(v.clone(), self.id.clone()));
+        self.evidence = Some(v);
+        self.provenance = provenance;
+        self
+    }
 
+    /// Camera events that could not be written (vesdb errors) or were dropped (queue full) so far.
+    pub fn evidence_errors(&self) -> u64 { self.ev_queue.as_ref().map_or(0, |q| q.errors.load(Ordering::Relaxed)) }
+
+    /// Hashes of what is producing decisions right now (the calibration hash follows the camera in use).
+    pub fn provenance(&self) -> Option<&Provenance> { Some(&self.provenance) }
+
+    fn refresh_calibration_hash(&mut self) {
+        self.provenance.calibration_sha256 = sha256_hex(serde_json::to_string(&self.scene.cam).unwrap_or_default().as_bytes());
+    }
+
+    fn camera_event(&self, ty: &str, data: serde_json::Value) {
+        if let Some(q) = &self.ev_queue { q.push(ty, data); }
+    }
+
+    /// Debounced: every status change is recorded; a mode-only flip at most every 2 s.
     fn record_guard(&mut self, t: f64) {
         let now = (self.guard.status, self.mode);
-        if self.last_reported == Some(now) { return; }
+        let Some(prev) = self.last_reported else { return self.emit_guard(t, now) };
+        if prev == now { return; }
+        if prev.0 != now.0 || t - self.last_mode_event_t >= 2.0 { self.emit_guard(t, now); }
+    }
+
+    fn emit_guard(&mut self, t: f64, now: (Status, Mode)) {
         self.last_reported = Some(now);
-        if let Some(v) = &self.evidence {
-            let pose = self.last.as_ref().filter(|m| m.ok).map(|m| m.pose);
-            let _ = v.camera_event(&self.id, "camera-guard-changed", json!({ "t": t, "status": now.0, "analytics": now.1, "pose": pose,
-                "inliers": self.last.as_ref().map(|m| m.inliers) }));
-        }
+        self.last_mode_event_t = t;
+        let pose = self.last.as_ref().filter(|m| m.ok).map(|m| m.pose);
+        let inliers = self.last.as_ref().map(|m| m.inliers);
+        self.camera_event("camera-guard-changed", json!({ "t": t, "status": now.0, "analytics": now.1, "pose": pose, "inliers": inliers,
+            "suspended": self.suspended }));
     }
 
     fn incident_id(&self, e: &AlertEvent) -> String {
@@ -266,79 +386,222 @@ impl CameraWorker {
         }
     }
 
-    /// Capture the reference view (the view the deck calibration belongs to). `extra` frames from the
-    /// next few seconds let the aligner keep only static background points.
-    pub fn set_reference(&mut self, reference: &Bgr, extra: &[Bgr]) -> usize {
+    /// Forget everything tied to the previous reference: guard state, mode, compensation, height estimate.
+    fn reset_for_reference(&mut self) {
+        self.guard.reset();
         self.mode = Mode::Aligned;
         self.cur_to_ref = I3;
+        self.suspended = None;
+        self.last = None;
+        self.last_reported = None;
+        self.frame_no = 0;
+        self.ah_state = AhState::Estimating;
+        self.ah_tracks.clear();
+        self.ah_rejects = 0;
+        self.ah_t0 = None;
+        self.ah_value = None;
+        self.refresh_calibration_hash();
+    }
+
+    /// Capture the reference view (the view the deck calibration belongs to). `extra` frames from the
+    /// next few seconds let the aligner keep only static background points. Resets the guard, mode,
+    /// compensation, auto-height state and provenance.
+    pub fn set_reference(&mut self, reference: &Bgr, extra: &[Bgr]) -> usize {
+        self.reset_for_reference();
         self.aligner.set_reference(reference, extra, None)
     }
 
-    fn decide(&self, m: &Measure, img_w: usize) -> (Mode, M3) {
-        let mode = compensation_mode(m, &self.cfg.limits);
-        if mode != Mode::Compensated { return (mode, I3); }
-        // aligner H is reference → live at analysis resolution; lift to full resolution and invert
-        let s = ANALYSIS_W as f64 / img_w as f64;
-        let sm: M3 = [[s, 0.0, 0.0], [0.0, s, 0.0], [0.0, 0.0, 1.0]];
-        let si: M3 = [[1.0 / s, 0.0, 0.0], [0.0, 1.0 / s, 0.0], [0.0, 0.0, 1.0]];
-        let ref_to_cur = mul(&si, &mul(&m.h, &sm));
-        match invert(&ref_to_cur) { Some(h) => (Mode::Compensated, h), None => (Mode::Paused, I3) }
+    /// Restore a saved reference: `static_points` (from [`CameraWorker::reference_points`]) select the background keypoints.
+    pub fn set_reference_masked(&mut self, reference: &Bgr, static_points: &[[f32; 2]]) -> usize {
+        self.reset_for_reference();
+        let set: HashSet<(u32, u32)> = static_points.iter().map(|p| (p[0].to_bits(), p[1].to_bits())).collect();
+        let mask = move |x: f32, y: f32| set.contains(&(x.to_bits(), y.to_bits()));
+        self.aligner.set_reference(reference, &[], Some(&mask))
     }
 
-    /// Map a live-image box into reference pixels (axis-aligned hull of the mapped corners).
+    /// Background points of the current reference (full-resolution pixels).
+    pub fn reference_points(&self) -> Vec<[f32; 2]> { self.aligner.static_points() }
+
+    pub fn reference_quality(&self) -> vg360_guard::aligner::RefQuality { self.aligner.reference_quality() }
+
+    /// Pick the best reference from frames captured over a few seconds: the candidate (first / middle / last)
+    /// with the most background points, the other frames serving as the static-background filter. Refuses a dark,
+    /// flat or featureless view (`Err(why)`; the aligner then holds that unusable reference, so do not run on it).
+    pub fn capture_reference(&mut self, frames: &[Bgr]) -> Result<(usize, RefInfo), String> {
+        if frames.is_empty() { return Err("no frames".into()); }
+        let n = frames.len();
+        let mut cands = vec![0, n / 2, n - 1];
+        cands.dedup();
+        let extras_for = |c: usize| -> Vec<Bgr> {
+            let others: Vec<usize> = (0..n).filter(|&i| i != c).collect();
+            let k = others.len().min(4);
+            (0..k).map(|j| frames[others[j * others.len() / k]].clone()).collect()
+        };
+        let mut best: Option<(usize, usize)> = None;
+        let mut last_tried = 0;
+        for &c in &cands {
+            let pts = self.set_reference(&frames[c], &extras_for(c));
+            last_tried = c;
+            if best.is_none_or(|b| pts > b.1) { best = Some((c, pts)); }
+        }
+        let (bi, _) = best.unwrap();
+        if bi != last_tried { self.set_reference(&frames[bi], &extras_for(bi)); }
+        let q = self.aligner.reference_quality();
+        if let Some(why) = reference_problem(&q, self.cfg.min_ref_points) { return Err(why); }
+        Ok((bi, RefInfo { points: q.points, mean: q.mean, std: q.std, sha256: sha256_hex(&frames[bi].data) }))
+    }
+
+    /// Write `{dir}/{id}.png` and `{id}.json` (points, sha256 of the png, time, background points).
+    /// Returns the png's sha256.
+    pub fn save_reference(&self, dir: &Path, img: &Bgr) -> Result<String, Error> {
+        std::fs::create_dir_all(dir)?;
+        let png = dir.join(format!("{}.png", self.id));
+        img.save(&png)?;
+        let sha = sha256_hex(&std::fs::read(&png)?);
+        let q = self.aligner.reference_quality();
+        let meta = json!({ "camera": self.id, "points": q.points, "sha256": sha, "width": img.w, "height": img.h,
+            "saved_unix": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()),
+            "static_points": self.reference_points() });
+        std::fs::write(dir.join(format!("{}.json", self.id)), serde_json::to_vec(&meta)?)?;
+        Ok(sha)
+    }
+
+    /// Load a saved reference (verifying the png hash and that it is still usable). `Ok(None)` when none is stored.
+    pub fn load_reference(&mut self, dir: &Path) -> Result<Option<RefInfo>, String> {
+        let (png, js) = (dir.join(format!("{}.png", self.id)), dir.join(format!("{}.json", self.id)));
+        if !png.exists() || !js.exists() { return Ok(None); }
+        let bytes = std::fs::read(&png).map_err(|e| e.to_string())?;
+        let meta: serde_json::Value = serde_json::from_slice(&std::fs::read(&js).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+        let sha = sha256_hex(&bytes);
+        if meta["sha256"].as_str() != Some(sha.as_str()) { return Err("stored reference image does not match its recorded hash".into()); }
+        let pts: Vec<[f32; 2]> = serde_json::from_value(meta["static_points"].clone()).map_err(|e| e.to_string())?;
+        let img = Bgr::decode(&bytes).map_err(|e| e.to_string())?;
+        self.set_reference_masked(&img, &pts);
+        let q = self.aligner.reference_quality();
+        if let Some(why) = reference_problem(&q, self.cfg.min_ref_points) { return Err(format!("stored reference unusable: {why}")); }
+        Ok(Some(RefInfo { points: q.points, mean: q.mean, std: q.std, sha256: sha }))
+    }
+
+    /// Record that a reference view was set (vesdb camera event `reference-set`).
+    pub fn note_reference(&self, info: &RefInfo, source: &str) {
+        self.camera_event("reference-set", json!({ "sha256": info.sha256, "points": info.points, "mean": info.mean, "std": info.std, "source": source }));
+    }
+
+    /// live → reference matrix (full-resolution pixels) in use; identity unless compensating.
+    pub fn cur_to_ref(&self) -> M3 { self.cur_to_ref }
+
+    /// Map a live-image box into reference pixels. x: the mapped feet (bottom centre) at the original width, so
+    /// a rotated view does not widen the box. y: the vertical extent of the mapped corners (head row = higher top
+    /// corner, feet row = lower bottom corner), which measured closest to the un-knocked deck positions
+    /// (0.24 m vs 0.28 m mean with a head/feet-point rebuild); it exceeds the true height by only ~1 % per 1.5° of rotation.
     pub fn to_reference(&self, d: &Det) -> [f64; 4] {
-        let cs = [[d.x1, d.y1], [d.x2, d.y1], [d.x2, d.y2], [d.x1, d.y2]].map(|p| robust::project(&self.cur_to_ref, p));
-        [cs.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min), cs.iter().map(|p| p[1]).fold(f64::INFINITY, f64::min),
-         cs.iter().map(|p| p[0]).fold(f64::NEG_INFINITY, f64::max), cs.iter().map(|p| p[1]).fold(f64::NEG_INFINITY, f64::max)]
+        let xc = (d.x1 + d.x2) / 2.0;
+        let w = d.x2 - d.x1;
+        let c = [[d.x1, d.y1], [d.x2, d.y1], [d.x2, d.y2], [d.x1, d.y2]].map(|p| robust::project(&self.cur_to_ref, p));
+        let foot = robust::project(&self.cur_to_ref, [xc, d.y2]);
+        [foot[0] - w / 2.0, c[0][1].min(c[1][1]), foot[0] + w / 2.0, c[2][1].max(c[3][1])]
     }
 
     pub fn mode(&self) -> Mode { self.mode }
 
-    /// Collect person boxes until `auto_height_boxes` are in, then fix the mount height from them
-    /// (`vg360_geom::autocal::height_from_people`, proved in `lean/VG360/Calib.lean`) and record it.
-    fn auto_height(&mut self, boxes: &[[f64; 4]], t: f64) {
-        self.auto_boxes.extend(boxes.iter().filter(|b| b[3] - b[1] > 1.2 * (b[2] - b[0])));   // upright boxes only
-        if self.auto_boxes.len() < self.cfg.auto_height_boxes { return; }
-        self.auto_done = true;
+    /// One guard measurement: status, analytics suspension, mode and compensation matrix.
+    fn guard_tick(&mut self, frame: &Bgr, t: f64) {
+        let m = self.aligner.measure(frame);
+        let obs = if m.blocked { Observation::Blocked } else if m.ok { Observation::Fix(m.pose, m.inliers) } else { Observation::NoFix };
+        self.guard.step(t, obs);
+        // the first bad tick stops analytics at once; the alarm status follows the hold times
+        self.suspended = if m.blocked { Some("lens blocked") } else if !m.ok { Some("view not recognised") } else { None };
+        if m.ok {
+            let sp = self.guard.smoothed_pose().unwrap_or(m.pose);
+            let l = self.cfg.limits;
+            let (mut mode, mut h) = if is_aligned(&m.pose) && is_aligned(&sp) { (Mode::Aligned, I3) }
+                else if within(&l, &m.pose) && within(&l, &sp) && m.inliers >= l.min_inliers {
+                    match lift(&m, frame.w) { Some(h) => (Mode::Compensated, h), None => (Mode::Paused, self.cur_to_ref) }
+                } else { (Mode::Paused, self.cur_to_ref) };
+            if self.fisheye.is_some() && mode == Mode::Compensated { mode = Mode::Paused; h = self.cur_to_ref; }
+            self.mode = mode;
+            self.cur_to_ref = h;       // only ever replaced by a valid fit; a failed tick keeps the last good matrix
+        } else if matches!(self.guard.status, Status::Blocked | Status::ViewLost) {
+            self.mode = Mode::Paused;
+        }
+        self.last = Some(m);
+        self.record_guard(t);
+    }
+
+    fn ah_active(&self) -> bool { self.cfg.auto_height_boxes > 0 && self.fisheye.is_none() }
+
+    fn ah_fail(&mut self, t: f64, reason: &str) {
+        self.ah_state = AhState::Failed;
+        self.camera_event("height-estimate-failed", json!({ "t": t, "reason": reason, "rejected_estimates": self.ah_rejects,
+            "samples": self.ah_samples() }));
+    }
+
+    fn ah_samples(&self) -> usize { self.ah_tracks.values().map(Vec::len).sum() }
+
+    /// Collect standing-person boxes (up to `AH_PER_TRACK` per tracked person, `AH_SPACING_S` apart) and, with enough
+    /// distinct people, fix the mount height from them (`vg360_geom::autocal::height_from_people`, proved in
+    /// `lean/VG360/Calib.lean`) and record it. Samples: detector score >= 0.5, >= 40 px tall, upright (aspect > 1.2),
+    /// not touching the image edge; only while the view is aligned. Needs `auto_height_min_tracks` (3) distinct people
+    /// and `auto_height_boxes` samples; at `AH_TIMEOUT_S` it estimates from what it has if enough people were seen,
+    /// otherwise (or after five estimates outside 1.5-60 m) it is marked failed. Returns true on the frame the height is set.
+    fn auto_height(&mut self, live: &[Det], mapped: &[[f64; 4]], recs: &[Option<Rec>], (iw, ih): (usize, usize), t: f64) -> bool {
+        let t0 = *self.ah_t0.get_or_insert(t);
+        let need_tracks = self.cfg.auto_height_min_tracks.max(1);
+        let timed_out = t - t0 > AH_TIMEOUT_S;
+        if timed_out && self.ah_tracks.len() < need_tracks { self.ah_fail(t, "timeout: too few distinct people seen"); return false; }
+        if !timed_out {
+            if self.mode != Mode::Aligned { return false; }
+            let (mx, my) = (iw as f64 * 0.01, ih as f64 * 0.01);
+            for ((d, b), r) in live.iter().zip(mapped).zip(recs) {
+                let Some(r) = r else { continue };
+                let ok = d.score >= 0.5 && d.y2 - d.y1 >= 40.0 && (d.y2 - d.y1) > 1.2 * (d.x2 - d.x1)
+                    && d.x1 > mx && d.y1 > my && d.x2 < iw as f64 - mx && d.y2 < ih as f64 - my;
+                if !ok { continue; }
+                let v = self.ah_tracks.entry(r.track).or_default();
+                if v.len() < AH_PER_TRACK && v.last().is_none_or(|(ts, _)| t - ts >= AH_SPACING_S) { v.push((t, *b)); }
+            }
+            let need_samples = self.cfg.auto_height_boxes.max(need_tracks);
+            if self.ah_tracks.len() < need_tracks || self.ah_samples() < need_samples { return false; }
+        }
+        let boxes: Vec<[f64; 4]> = self.ah_tracks.values().flatten().map(|(_, b)| *b).collect();
         let was = self.scene.cam.height_m;
-        match vg360_geom::autocal::height_from_people(&self.scene.cam, &self.auto_boxes, 1.70) {
+        match vg360_geom::autocal::height_from_people(&self.scene.cam, &boxes, 1.70) {
             Some(h) if (1.5..=60.0).contains(&h) => {
                 self.scene.cam.height_m = h;
                 self.scene.tracker = vg360_scene::track::Tracker::new(vg360_scene::track::TrackerCfg::default());
-                if let Some(v) = &self.evidence {
-                    let _ = v.camera_event(&self.id, "height-estimated", json!({ "t": t, "height_m": h, "previous_m": was,
-                        "boxes": self.auto_boxes.len(), "assumed_person_m": 1.70, "method": "median head height of standing people" }));
-                }
+                self.ah_state = AhState::Set;
+                self.ah_value = Some(h);
+                self.refresh_calibration_hash();
+                self.camera_event("height-estimated", json!({ "t": t, "height_m": h, "previous_m": was,
+                    "boxes": boxes.len(), "people": self.ah_tracks.len(), "assumed_person_m": 1.70,
+                    "method": "median head height of standing people, up to 4 samples per tracked person",
+                    "calibration_sha256": self.provenance.calibration_sha256 }));
+                true
             }
-            _ => { self.auto_done = false; self.auto_boxes.clear(); }        // implausible: collect again
+            _ => {
+                self.ah_rejects += 1;
+                self.ah_tracks.clear();
+                if timed_out || self.ah_rejects >= AH_MAX_REJECTS { self.ah_fail(t, "estimates outside 1.5-60 m"); }
+                false
+            }
         }
     }
 
     /// Process one live frame at time `t` (seconds) with the site context (crane load, pipe handling …).
     pub fn process(&mut self, frame: &Bgr, t: f64, _dt: f64, sig: &Signals) -> Result<FrameResult, Error> {
         let t0 = Instant::now();
-        if self.frame_no % self.cfg.guard_every.max(1) == 0 {
-            let m = self.aligner.measure(frame);
-            let obs = if m.blocked { Observation::Blocked } else if m.ok { Observation::Fix(m.pose) } else { Observation::NoFix };
-            self.guard.step(t, obs);
-            let (mut mode, h) = self.decide(&m, frame.w);
-            if self.fisheye.is_some() && mode == Mode::Compensated { mode = Mode::Paused; }
-            // blocked / lost only pause once the guard has confirmed it (hold time), like the alarm
-            self.mode = match (mode, self.guard.status) {
-                (Mode::Paused, Status::Ok) if !m.ok => self.mode,
-                _ => mode,
-            };
-            if self.mode == Mode::Compensated { self.cur_to_ref = h; } else if self.mode == Mode::Aligned { self.cur_to_ref = I3; }
-            self.last = Some(m);
-            self.record_guard(t);
-        }
+        if self.frame_no % self.cfg.guard_every.max(1) == 0 { self.guard_tick(frame, t); }
         self.frame_no += 1;
         let (pose, inliers, ref_box) = self.last.as_ref().map_or((None, 0, None), |m| (m.ok.then_some(m.pose), m.inliers, m.ok.then_some(m.boxq)));
-        let calibrating = self.cfg.auto_height_boxes > 0 && !self.auto_done && self.fisheye.is_none();
-        let mut res = FrameResult { camera: self.id.clone(), t, status: self.guard.status, mode: self.mode, pose, inliers, ref_box,
-                                    boxes: vec![], recs: vec![], helmet: vec![], alerts: vec![], ms: 0.0,
-                                    height_m: self.scene.cam.height_m, calibrating, jpeg: None };
-        if self.mode != Mode::Paused {
+        let ah_active = self.ah_active();
+        let mut res = FrameResult { camera: self.id.clone(), t, status: self.guard.status, mode: self.mode, pose,
+                                    smoothed_pose: self.guard.smoothed_pose(), inliers, ref_points: self.aligner.reference_quality().points as i32,
+                                    guard_pending: self.guard.pending().map(|(s, since)| (format!("{s:?}"), (t - since).max(0.0))),
+                                    analytics_suspended: self.suspended.map(String::from), frame_age_s: None, auto_height: None,
+                                    ref_box, boxes: vec![], recs: vec![], helmet: vec![], alerts: vec![], ms: 0.0,
+                                    height_m: self.scene.cam.height_m, calibrating: ah_active && self.ah_state == AhState::Estimating, jpeg: None };
+        let mut skip_rules = ah_active && self.ah_state != AhState::Set;
+        if self.suspended.is_none() && self.mode != Mode::Paused {
             let gray = frame.to_gray();
             let (boxes, helmet, recs) = if let Some(rig) = &self.fisheye {
                 // every view: detect, classify PPE, place on the deck through the view's camera
@@ -367,15 +630,20 @@ impl CameraWorker {
                 let boxes = self.det.detect_tiled(&gray, self.cfg.tiles, 0.25)?;
                 let helmet = match &self.ppe { Some(p) => p.classify(&gray, &boxes)?, None => vec![None; boxes.len()] };
                 let mapped: Vec<[f64; 4]> = boxes.iter().map(|d| self.to_reference(d)).collect();
-                if calibrating { self.auto_height(&mapped, t); }
                 let recs = self.scene.analyse(&mapped, t);
+                if ah_active && self.ah_state == AhState::Estimating {
+                    // the frame that sets the height still runs no rule (its records use the old height)
+                    if self.auto_height(&boxes, &mapped, &recs, (frame.w, frame.h), t) { res.height_m = self.scene.cam.height_m; }
+                    res.calibrating = self.ah_state == AhState::Estimating;
+                    skip_rules = true;
+                }
                 (boxes, helmet, recs)
             };
 
             let people: Vec<Person> = recs.iter().zip(&helmet).filter_map(|(r, h)| r.as_ref().map(|r|
                 Person { id: r.track.to_string(), clear: &r.zones, down: r.state.down, p_helmet: *h })).collect();
-            // no rule runs on an uncalibrated camera (auto-height still collecting)
-            let events = if calibrating { vec![] } else { vg360_rules::step(&mut self.engine, &self.rules.site, t, Some(&self.id), sig, &people) };
+            // no rule runs on an uncalibrated camera (auto-height still collecting, or failed)
+            let events = if skip_rules { vec![] } else { vg360_rules::step(&mut self.engine, &self.rules.site, t, Some(&self.id), sig, &people) };
             if !events.is_empty() {
                 // the evidence frame is the JPEG that is kept, so its hash can be checked later
                 let jpeg = frame.encode_jpeg(90);
@@ -396,6 +664,10 @@ impl CameraWorker {
             res.recs = recs;
             res.helmet = helmet;
         }
+        if ah_active {
+            res.auto_height = Some(AutoHeight { state: match self.ah_state { AhState::Estimating => "estimating", AhState::Set => "set", AhState::Failed => "failed" },
+                                                value: self.ah_value, samples: self.ah_samples() });
+        }
         res.ms = t0.elapsed().as_secs_f64() * 1e3;
         let n = self.cfg.snapshot_every;
         if n > 0 && (self.frame_no - 1) % n == 0 { res.jpeg = Some(frame.encode_jpeg(75)); }
@@ -403,33 +675,131 @@ impl CameraWorker {
     }
 }
 
+/// How `spawn_stream_ref` obtains the reference view.
+#[derive(Clone, Debug)]
+pub struct RefPolicy {
+    /// seconds of frames collected to pick the best reference and its static background
+    pub capture_s: f64,
+    /// where the reference is kept (None: `WorkerCfg::reference_dir`, else not persisted)
+    pub dir: Option<PathBuf>,
+    /// ignore a stored reference and capture a new one (the new one replaces it)
+    pub rereference: bool,
+    /// stop capturing after this many frames instead of `capture_s` (what the old `spawn_stream` does)
+    pub ref_frames: Option<usize>,
+}
+
+impl Default for RefPolicy {
+    fn default() -> Self { Self { capture_s: REF_CAPTURE_S, dir: None, rereference: false, ref_frames: None } }
+}
+
+/// One step of a frame source for [`drive`].
+pub enum Src {
+    /// a frame and its age at the grabber (s)
+    Frame(Bgr, Option<f64>),
+    /// 30 s without a new frame
+    Stall,
+    /// the source is finished (tests, files)
+    End,
+}
+
+/// Consecutive `process` errors after which the worker gives up.
+pub const MAX_CONSECUTIVE_ERRORS: usize = 20;
+
+/// The frame loop of a stream worker: results (and errors) go to `tx`. A stall is reported and waited out;
+/// a `process` error is reported and the loop continues, until `MAX_CONSECUTIVE_ERRORS` in a row.
+pub fn drive(w: &mut CameraWorker, next: &mut dyn FnMut() -> Src, now: &mut dyn FnMut() -> f64, dt: f64,
+             signals: &dyn Fn(f64) -> Signals, tx: &mpsc::SyncSender<Result<FrameResult, String>>) {
+    let mut errs = 0usize;
+    loop {
+        match next() {
+            Src::End => return,
+            Src::Stall => { if tx.send(Err("stream stalled: no frames for 30 s".into())).is_err() { return; } }
+            Src::Frame(f, age) => {
+                let t = now();
+                match w.process(&f, t, dt, &signals(t)) {
+                    Ok(mut r) => { errs = 0; r.frame_age_s = age; if tx.send(Ok(r)).is_err() { return; } }
+                    Err(e) => {
+                        errs += 1;
+                        if tx.send(Err(e.to_string())).is_err() { return; }
+                        if errs >= MAX_CONSECUTIVE_ERRORS {
+                            let _ = tx.send(Err(format!("worker stopped after {errs} consecutive errors")));
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Run a worker on a live stream (RTSP URL or a file replayed as a camera) in its own thread.
 /// The first `ref_frames` frames become the reference view. Results arrive on the returned channel;
-/// dropping the receiver stops the worker.
-pub fn spawn_stream(mut w: CameraWorker, url: String, width: usize, height: usize, fps: f64, ref_frames: usize,
+/// dropping the receiver stops the worker. See [`spawn_stream_ref`] for validated, persisted references.
+pub fn spawn_stream(w: CameraWorker, url: String, width: usize, height: usize, fps: f64, ref_frames: usize,
                     signals: impl Fn(f64) -> Signals + Send + 'static) -> mpsc::Receiver<Result<FrameResult, String>> {
+    spawn_stream_ref(w, url, width, height, fps, RefPolicy { ref_frames: Some(ref_frames.max(1)), ..Default::default() }, signals)
+}
+
+/// Like [`spawn_stream`], with the reference chosen by `policy`: a stored reference is loaded (so a camera moved
+/// while the server was down reports Moved) unless `rereference`; otherwise frames are captured over `capture_s`,
+/// the best view is picked, validated (not dark / flat, at least `min_ref_points` background points; retried for
+/// 30 s, then `Err("reference unusable: …")` is sent on every failed attempt) and stored.
+pub fn spawn_stream_ref(mut w: CameraWorker, url: String, width: usize, height: usize, fps: f64, policy: RefPolicy,
+                        signals: impl Fn(f64) -> Signals + Send + 'static) -> mpsc::Receiver<Result<FrameResult, String>> {
     let (tx, rx) = mpsc::sync_channel(8);
     thread::spawn(move || {
         let g = Grabber::start(&url, width, height, false);
         let dt = 1.0 / fps;
-        let next = |seen: &mut u64| -> Option<Bgr> {
+        let mut seen = 0u64;
+        let mut next = || -> Src {
             let t0 = Instant::now();
             loop {
                 let n = g.frames();
-                if n > *seen { *seen = n; return g.read(); }
-                if t0.elapsed() > Duration::from_secs(30) { return None; }
+                if n > seen { seen = n; if let Some(f) = g.read() { return Src::Frame(f, g.age_s()); } }
+                if t0.elapsed() > Duration::from_secs(30) { return Src::Stall; }
                 thread::sleep(Duration::from_millis(5));
             }
         };
-        let mut seen = 0u64;
-        let mut refs = Vec::new();
-        while refs.len() < ref_frames.max(1) { match next(&mut seen) { Some(f) => refs.push(f), None => { let _ = tx.send(Err("no frames from stream".into())); g.stop(); return; } } }
-        w.set_reference(&refs[0], &refs[1..]);
-        let start = Instant::now();
-        while let Some(f) = next(&mut seen) {
-            let t = start.elapsed().as_secs_f64();
-            if tx.send(w.process(&f, t, dt, &signals(t)).map_err(|e| e.to_string())).is_err() { break; }
+        let dir = policy.dir.clone().or_else(|| w.cfg.reference_dir.clone());
+        let mut have_ref = false;
+        if let (Some(d), false) = (&dir, policy.rereference) {
+            match w.load_reference(d) {
+                Ok(Some(info)) => { w.note_reference(&info, "stored"); have_ref = true; }
+                Ok(None) => {}
+                Err(e) => eprintln!("vg360-pipeline: {}: {e}; capturing a new reference", w.id),
+            }
         }
+        let first_try = Instant::now();
+        while !have_ref {
+            let start = Instant::now();
+            let mut frames: Vec<Bgr> = Vec::new();
+            loop {
+                match next() {
+                    Src::Frame(f, _) => frames.push(f),
+                    _ => { if tx.send(Err("stream stalled: no frames for 30 s".into())).is_err() { g.stop(); return; } }
+                }
+                let done = match policy.ref_frames { Some(n) => frames.len() >= n, None => start.elapsed().as_secs_f64() >= policy.capture_s && !frames.is_empty() };
+                if done || frames.len() >= 60 { break; }
+            }
+            match w.capture_reference(&frames) {
+                Ok((bi, info)) => {
+                    let mut info = info;
+                    if let Some(d) = &dir {
+                        match w.save_reference(d, &frames[bi]) {
+                            Ok(sha) => info.sha256 = sha,
+                            Err(e) => eprintln!("vg360-pipeline: {}: reference not stored: {e}", w.id),
+                        }
+                    }
+                    w.note_reference(&info, "captured");
+                    have_ref = true;
+                }
+                Err(why) => {
+                    if first_try.elapsed().as_secs_f64() >= 30.0 && tx.send(Err(format!("reference unusable: {why}"))).is_err() { g.stop(); return; }
+                }
+            }
+        }
+        let start = Instant::now();
+        drive(&mut w, &mut next, &mut || start.elapsed().as_secs_f64(), dt, &signals, &tx);
         g.stop();
     });
     rx

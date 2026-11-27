@@ -36,7 +36,7 @@ pub async fn shell(cx: &Cx, slot: Slot<'_>) -> Result<impl View> {
         (href!(pages::training).resolve(cx), href!(pages::training).is_current(cx), "Models & training"),
         (href!(pages::settings).resolve(cx), href!(pages::settings).is_current(cx), "Settings"),
     ];
-    let alarms = site.cams.iter().filter(|c| c.guard != Status::Ok).count();
+    let alarms = pages::alarm_cams(site).0.len();
     Ok(view! {
         <!DOCTYPE html>
         <html lang="en">

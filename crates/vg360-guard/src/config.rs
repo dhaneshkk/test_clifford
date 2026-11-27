@@ -2,14 +2,10 @@
 //! The RTSP URL is NOT a constant any more: it is read from `VG360_CAM_<ID>_URL` at runtime,
 //! so no camera credentials live in the repository.
 
-pub const FRAME_W: i32 = 1280; // ffmpeg scales the stream to this size
-pub const FRAME_H: i32 = 720;
 
 pub const ANALYSIS_W: i32 = 960; // frames are downscaled to this width for matching
-pub const SIFT_FEATURES: i32 = 0; // 0 = no cap (a cap drops background points in busy scenes)
 pub const RATIO: f32 = 0.80; // Lowe ratio test
 pub const H_THRESH: f64 = 8.0; // homography tolerance (px @ ANALYSIS_W); loose for wide-angle lens
-pub const ANALYSIS_HZ: f64 = 4.0;
 pub const MIN_INLIERS: i32 = 15; // fewer agreeing points = no position fix this check
 pub const CONFIRM_INLIERS: i32 = 60; // "POSITION CORRECT" needs at least this many
 
@@ -37,9 +33,5 @@ pub const LOST_HOLD: f64 = 20.0; // s view unrecognisable
 pub const SMOOTH_N: usize = 5; // median of last N checks
 pub const REF_CAPTURE_S: f64 = 3.0; // s of frames used to pick static background points
 pub const OK_HOLD: f64 = 2.0; // s aligned before "correct"
-pub const CORRECT_SHOW: f64 = 6.0; // s the green banner stays
 
 
-pub const REF_DIR: &str = "reference";
-pub const ALERT_DIR: &str = "alerts";
-pub const SNAP_DIR: &str = "snapshots";

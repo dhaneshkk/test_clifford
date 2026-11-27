@@ -2,6 +2,7 @@
 //! person boxes → feet on the deck (PGA ray ∧ plane) and head height → fitted 3-D pose → track →
 //! zone clearances → fall and intrusion events.
 use serde::Serialize;
+use vg360_geom::autocal::{feet_on_deck, person_vertical};
 use vg360_geom::camera::Camera;
 
 use crate::pose::fit_pose;
@@ -45,26 +46,16 @@ fn round_n(x: f64, n: i32) -> f64 {
     r / s
 }
 
-fn ray_plane(c: [f64; 3], d: [f64; 3], n: [f64; 3], delta: f64) -> Option<[f64; 3]> {
-    let nd = n[0] * d[0] + n[1] * d[1] + n[2] * d[2];
-    if nd.abs() < 1e-12 { return None; }
-    let s = -((n[0] * c[0] + n[1] * c[1] + n[2] * c[2]) + delta) / nd;
-    Some([c[0] + s * d[0], c[1] + s * d[1], c[2] + s * d[2]])
-}
-
 /// One box seen by `cam` → (feet origin, head height, tilt, pose IoU); `None` if it cannot stand on the deck.
 /// Fisheye cameras call this with the pinhole camera of the virtual view the box was found in.
 pub fn box_geometry(cam: &Camera, b: [f64; 4]) -> Option<([f64; 2], f64, f64, f64)> {
     let c = cam.centre();
-    let uc = (b[0] + b[2]) / 2.0;
-    let ft = ray_plane(c, cam.ray(uc, b[3]), [0.0, 0.0, 1.0], 0.0)?;
+    // fit_pose is anchored on the box-bottom-centre ray (its hull rendering is self-consistent with it)
+    let ft = feet_on_deck(cam, (b[0] + b[2]) / 2.0, b[3])?;
+    // head z only: feet and head on one vertical straddling the box centre column (see `person_vertical`)
+    let mut hz = person_vertical(cam, b).map_or(0.0, |(_, z, _)| z);
     let fwd = { let r = cam.rotation(); [r[0][2], r[1][2], r[2][2]] };
     if (ft[0] - c[0]) * fwd[0] + (ft[1] - c[1]) * fwd[1] + (ft[2] - c[2]) * fwd[2] <= 0.0 { return None; }
-    // head ray ∧ vertical plane through the feet facing the camera
-    let mut n = [ft[0] - c[0], ft[1] - c[1], 0.0];
-    let l = (n[0] * n[0] + n[1] * n[1]).sqrt() + 1e-9;
-    n = [n[0] / l, n[1] / l, 0.0];
-    let mut hz = ray_plane(c, cam.ray(uc, b[1]), n, -(n[0] * ft[0] + n[1] * ft[1])).map_or(0.0, |x| x[2]);
     let pose = fit_pose(cam, b, [ft[0], ft[1]]);
     if pose.tilt_deg > 1.0 { hz = pose.top_z; }
     Some((pose.origin, hz, pose.tilt_deg, pose.iou))

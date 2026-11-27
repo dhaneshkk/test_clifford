@@ -40,4 +40,24 @@ theorem height_from_people (A w2 nw nw' w2' : ℝ) (hm : headZ 1 w2 nw nw' w2' �
   rw [head_height_scales]
   field_simp
 
+/-- closest-point head height (`autocal::person_vertical`). The feet ray (direction `(fx, fy, fz)`) meets the deck at
+    parameter `h / (−fz)`, so the vertical line through the feet sits at `c_xy + (h / −fz)·(fx, fy)`. The head ray
+    `(dx, dy, dz)` from `c` passes closest to that vertical at `s = (dx,dy)·(h/−fz)(fx,fy) / |(dx,dy)|²`, so the head
+    is at `h + s·dz`. Only the ray directions enter besides `h`. -/
+noncomputable def headZv (h fx fy fz dx dy dz : ℝ) : ℝ :=
+  h + (h / (-fz)) * ((dx * fx + dy * fy) / (dx ^ 2 + dy ^ 2)) * dz
+
+/-- every deck point scales with the mount height and the ray directions do not, so the closest-point head height
+    is linear in `h` -/
+theorem head_height_vertical_scales (h fx fy fz dx dy dz : ℝ) :
+    headZv h fx fy fz dx dy dz = h * headZv 1 fx fy fz dx dy dz := by
+  unfold headZv
+  ring
+
+/-- the 1 m probe calibration is exact for the closest-point form too -/
+theorem height_from_people_vertical (A fx fy fz dx dy dz : ℝ) (hm : headZv 1 fx fy fz dx dy dz ≠ 0) :
+    headZv (A / headZv 1 fx fy fz dx dy dz) fx fy fz dx dy dz = A := by
+  rw [head_height_vertical_scales]
+  field_simp
+
 end VG360.Calib

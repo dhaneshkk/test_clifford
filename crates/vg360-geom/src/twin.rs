@@ -29,8 +29,9 @@ pub struct TwinCamera {
 impl TwinCamera {
     /// RMS pixel distance between the runtime camera's projection of the twin's calibration points
     /// and the pixels the twin itself predicts (checks the conventions agree).
+    /// Not computed (None) for fisheye cameras: `camera` is only their pose, not their lens.
     pub fn rms_px(&self) -> Option<f64> {
-        if self.points.is_empty() { return None; }
+        if self.points.is_empty() || self.lens.is_some() { return None; }
         let s: f64 = self.points.iter().map(|(_, w, p)| {
             let q = self.camera.project(w[0], w[1]).unwrap_or([f64::INFINITY; 2]);
             (q[0] - p[0]).powi(2) + (q[1] - p[1]).powi(2)
@@ -41,9 +42,14 @@ impl TwinCamera {
 
 pub fn wrap180(a: f64) -> f64 { let x = (a + 180.0).rem_euclid(360.0) - 180.0; if x == -180.0 { 180.0 } else { x } }
 
-/// Parse a twin export. Errors name the first problem.
-/// Kannala–Brandt fisheye intrinsics in the camera's own pixels, plus optional virtual views
-/// (`[[bearing°, pitch°], …]` in world terms; default chosen by `vg360_pipeline::FisheyeRig`).
+/// Twin angle (the export's `yaw`, and each fisheye `lens.views` bearing) → runtime yaw (compass, 0° = north,
+/// clockwise): `wrap180(90 − b)`. The ONE conversion used for camera heading and virtual views alike.
+pub fn bearing_to_yaw(b: f64) -> f64 { wrap180(90.0 - b) }
+
+/// Kannala–Brandt fisheye intrinsics in the camera's own pixels, plus optional virtual views.
+/// In the twin JSON `views` are `[[bearing°, pitch°], …]` in the same angle convention as the camera's `yaw`;
+/// parsing converts them with [`bearing_to_yaw`], so `views` here hold runtime scene yaw (compass) and pitch,
+/// ready for `vg360_pipeline::FisheyeRig::new` (which also picks the default when `None`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LensSpec { pub fx: f64, pub fy: f64, pub cx: f64, pub cy: f64, pub k: [f64; 4], pub views: Option<Vec<[f64; 2]>> }
 
@@ -55,11 +61,25 @@ fn lens(c: &Value, id: &str) -> Result<Option<LensSpec>, String> {
     let n = |k: &str| l[k].as_f64().ok_or(format!("camera {id}: lens.{k} missing"));
     let k = l["k"].as_array().ok_or(format!("camera {id}: lens.k missing"))?;
     if k.len() != 4 { return Err(format!("camera {id}: lens.k needs 4 coefficients")); }
-    let views = l["views"].as_array().map(|v| v.iter().filter_map(|p| Some([p[0].as_f64()?, p[1].as_f64()?])).collect());
-    Ok(Some(LensSpec { fx: n("fx")?, fy: l["fy"].as_f64().unwrap_or(n("fx")?), cx: n("cx")?, cy: n("cy")?,
-                       k: [0, 1, 2, 3].map(|i| k[i].as_f64().unwrap_or(0.0)), views }))
+    let mut kk = [0.0; 4];
+    for (i, v) in k.iter().enumerate() { kk[i] = v.as_f64().ok_or(format!("camera {id}: lens.k[{i}] is not a number"))?; }
+    let fx = n("fx")?;
+    let fy = if l["fy"].is_null() { fx } else { l["fy"].as_f64().ok_or(format!("camera {id}: lens.fy is not a number"))? };
+    let views = if l["views"].is_null() { None } else {
+        let v = l["views"].as_array().ok_or(format!("camera {id}: lens.views is not an array"))?;
+        if v.is_empty() { return Err(format!("camera {id}: lens.views is empty; omit it for defaults")); }
+        Some(v.iter().enumerate().map(|(i, p)| {
+            let bad = || format!("camera {id}: lens.views[{i}] must be [bearing, pitch] (two numbers)");
+            let a = p.as_array().filter(|a| a.len() == 2).ok_or_else(bad)?;
+            Ok([bearing_to_yaw(a[0].as_f64().ok_or_else(bad)?), a[1].as_f64().ok_or_else(bad)?])
+        }).collect::<Result<Vec<_>, String>>()?)
+    };
+    Ok(Some(LensSpec { fx, fy, cx: n("cx")?, cy: n("cy")?, k: kk, views }))
 }
 
+fn pair(v: &Value) -> Option<[f64; 2]> { let a = v.as_array().filter(|a| a.len() == 2)?; Some([a[0].as_f64()?, a[1].as_f64()?]) }
+
+/// Parse a twin export. Errors name the first problem.
 pub fn cameras(twin: &Value) -> Result<Vec<TwinCamera>, String> {
     if twin["vg360_twin"].as_i64() != Some(1) { return Err("not a VG360 twin file (vg360_twin != 1)".into()); }
     let cams = twin["cameras"].as_array().ok_or("twin has no cameras")?;
@@ -68,16 +88,26 @@ pub fn cameras(twin: &Value) -> Result<Vec<TwinCamera>, String> {
         let num = |k: &str| c[k].as_f64().ok_or(format!("camera {id}: missing {k}"));
         let res = c["res"].as_str().ok_or(format!("camera {id}: missing res (export from the current Rig Twin)"))?;
         let (w, h) = res.split_once('x').and_then(|(a, b)| Some((a.parse::<u32>().ok()?, b.parse::<u32>().ok()?))).ok_or(format!("camera {id}: bad res {res}"))?;
+        if w == 0 || h == 0 { return Err(format!("camera {id}: res {res} has a zero side")); }
         let lens = lens(c, &id)?;
         let (fov, surf) = (if lens.is_some() { c["fov"].as_f64().unwrap_or(90.0) } else { num("fov")? }, c["surf"].as_f64().unwrap_or(0.0));
+        if lens.is_none() && !(10.0..=170.0).contains(&fov) { return Err(format!("camera {id}: fov {fov} outside 10..170 degrees")); }
+        let pitch = num("pitch")?;
+        if !(-90.0..=90.0).contains(&pitch) { return Err(format!("camera {id}: pitch {pitch} outside -90..90 degrees")); }
         let f = (w as f64 / 2.0) / (fov.to_radians() / 2.0).tan();
-        let camera = Camera { f_px: f, cx: w as f64 / 2.0, cy: h as f64 / 2.0, height_m: num("h")? - surf, pitch_deg: num("pitch")?,
-                              yaw_deg: wrap180(90.0 - num("yaw")?), roll_deg: 0.0, x0: num("x")?, y0: num("y")? };
+        // roll is always 0: the twin has no roll field (a fisheye is levelled by its upright virtual views)
+        let camera = Camera { f_px: f, cx: w as f64 / 2.0, cy: h as f64 / 2.0, height_m: num("h")? - surf, pitch_deg: pitch,
+                              yaw_deg: bearing_to_yaw(num("yaw")?), roll_deg: 0.0, x0: num("x")?, y0: num("y")? };
         if camera.height_m <= 0.0 { return Err(format!("camera {id}: mounted below its deck")); }
-        let points = c["calibration_points"].as_array().into_iter().flatten().filter_map(|p| Some((
-            p["name"].as_str().unwrap_or("").to_string(),
-            [p["world"][0].as_f64()?, p["world"][1].as_f64()?],
-            [p["predicted_px"][0].as_f64()?, p["predicted_px"][1].as_f64()?]))).collect();
+        let points = match &c["calibration_points"] {
+            Value::Null => vec![],
+            Value::Array(a) => a.iter().enumerate().map(|(i, p)| {
+                let bad = |what: &str| format!("camera {id}: calibration_points[{i}]: {what} must be two numbers");
+                Ok((p["name"].as_str().unwrap_or("").to_string(), pair(&p["world"]).ok_or_else(|| bad("world"))?,
+                    pair(&p["predicted_px"]).ok_or_else(|| bad("predicted_px"))?))
+            }).collect::<Result<Vec<_>, String>>()?,
+            _ => return Err(format!("camera {id}: calibration_points is not an array")),
+        };
         Ok(TwinCamera { id, camera, lens, width: w, height: h, surf, points })
     }).collect()
 }
@@ -112,6 +142,90 @@ mod tests {
         assert!(cams[1].lens.is_none());
         v["cameras"][0]["lens"]["model"] = "mei".into();
         assert!(super::cameras(&v).is_err());
+    }
+
+    fn sample() -> serde_json::Value {
+        serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../testdata/twin/rig_twin.json")).unwrap()).unwrap()
+    }
+    fn fish() -> serde_json::Value {
+        let mut v = sample();
+        v["cameras"][0]["lens"] = serde_json::json!({ "model": "kannala-brandt", "fx": 892, "cx": 1440, "cy": 1440, "k": [0.02, -0.01, 0.002, -0.0005] });
+        v
+    }
+    fn err(v: &serde_json::Value) -> String { super::cameras(v).unwrap_err() }
+
+    #[test]
+    fn fisheye_rms_is_not_computed() {
+        let c = super::cameras(&fish()).unwrap();
+        assert!(c[0].lens.is_some() && !c[0].points.is_empty());
+        assert!(c[0].rms_px().is_none());
+        assert!(c[1].rms_px().is_some());
+    }
+
+    #[test]
+    fn view_bearings_use_the_camera_yaw_conversion() {
+        let mut v = fish();
+        v["cameras"][0]["lens"]["views"] = serde_json::json!([[0, 35], [90, 35], [250, 20]]);
+        let c = &super::cameras(&v).unwrap()[0];
+        for (b, view) in [0.0, 90.0, 250.0].iter().zip(c.lens.as_ref().unwrap().views.as_ref().unwrap()) {
+            assert_eq!(view[0], super::bearing_to_yaw(*b));
+            // the deck point straight ahead of the virtual view lies along the converted compass direction
+            let cam = crate::camera::Camera { yaw_deg: view[0], pitch_deg: view[1], x0: 0.0, y0: 0.0, ..c.camera };
+            let g = cam.ground(cam.cx, cam.cy).unwrap();
+            let compass = g[0].atan2(g[1]).to_degrees();
+            assert!(super::wrap180(compass - super::wrap180(90.0 - b)).abs() < 1e-6, "{b}: {compass}");
+        }
+        // a view with the camera's own heading looks where the camera looks
+        let psi = v["cameras"][0]["yaw"].as_f64().unwrap();
+        v["cameras"][0]["lens"]["views"] = serde_json::json!([[psi, 35]]);
+        let c = &super::cameras(&v).unwrap()[0];
+        assert_eq!(c.lens.as_ref().unwrap().views.as_ref().unwrap()[0][0], c.camera.yaw_deg);
+    }
+
+    #[test]
+    fn strict_lens_parsing() {
+        let mut v = fish();
+        v["cameras"][0]["lens"]["views"] = serde_json::json!([]);
+        assert!(err(&v).contains("lens.views is empty; omit it for defaults"));
+        v["cameras"][0]["lens"]["views"] = serde_json::json!([[0, 35], [120]]);
+        assert!(err(&v).contains("views[1]"));
+        v["cameras"][0]["lens"]["views"] = serde_json::json!([["a", 35]]);
+        assert!(err(&v).contains("views[0]"));
+        v["cameras"][0]["lens"]["views"] = serde_json::json!([[0, 35, 1]]);
+        assert!(err(&v).contains("views[0]"));
+        v["cameras"][0]["lens"]["views"] = serde_json::Value::Null;
+        assert!(super::cameras(&v).is_ok());
+        v["cameras"][0]["lens"]["k"] = serde_json::json!([0.02, "x", 0.002, 0.0]);
+        assert!(err(&v).contains("lens.k[1]"));
+        let mut v = fish();
+        v["cameras"][0]["lens"]["fy"] = "big".into();
+        assert!(err(&v).contains("lens.fy"));
+        v["cameras"][0]["lens"]["fy"] = 900.into();
+        assert_eq!(super::cameras(&v).unwrap()[0].lens.as_ref().unwrap().fy, 900.0);
+    }
+
+    #[test]
+    fn strict_camera_parsing() {
+        let mut v = sample();
+        v["cameras"][1]["calibration_points"][1] = serde_json::json!({ "name": "p", "world": [1, "x"], "predicted_px": [1, 2] });
+        assert!(err(&v).contains("calibration_points[1]"));
+        let mut v = sample();
+        v["cameras"][1]["calibration_points"][0]["predicted_px"] = serde_json::json!([1]);
+        assert!(err(&v).contains("calibration_points[0]"));
+        for (k, bad, needle) in [("fov", 5, "fov"), ("fov", 175, "fov"), ("pitch", 95, "pitch"), ("pitch", -91, "pitch")] {
+            let mut v = sample();
+            v["cameras"][1][k] = bad.into();
+            assert!(err(&v).contains(needle), "{k}={bad}");
+        }
+        for res in ["0x720", "1280x0"] {
+            let mut v = sample();
+            v["cameras"][1]["res"] = res.into();
+            assert!(err(&v).contains("zero side"), "{res}");
+        }
+        // a fisheye camera's fov is unused, so it is not range-checked
+        let mut v = fish();
+        v["cameras"][0]["fov"] = 185.into();
+        assert!(super::cameras(&v).is_ok());
     }
 }
 

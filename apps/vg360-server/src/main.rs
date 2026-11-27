@@ -7,6 +7,8 @@
 //! `/api/twin` (GET / POST from the Rig Twin editor), `/api/rule-studio`, `/api/evidence`,
 //! live: `/api/live`, `/api/live/events` (SSE), `/cameras/{id}/live.jpg`, `/api/evidence/{incident}.jpg`, `POST /api/signals`.
 mod api;
+mod calib_api;
+mod env;
 mod live;
 mod pages;
 mod state;

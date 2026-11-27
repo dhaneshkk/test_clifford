@@ -161,3 +161,9 @@ svg.ov text.pt { fill: #fff; font: 700 26px system-ui, sans-serif; paint-order: 
 #live-alerts li.shadow { opacity: .75; }
 form.sig label { display: block; margin: 6px 0; }
 .banner.live { border-color: #16a34a; background: rgba(22,163,74,.12); }
+.caption .stat.bad { color: var(--bad); font-weight: 600; }
+.guardwarn { margin: 0 4px 6px; padding: 8px 10px; border-radius: 6px; border: 1px solid; font-size: 12px; display: grid; gap: 4px; }
+.guardwarn[hidden] { display: none; }
+.guardwarn.warn { background: rgba(227, 179, 65, .10); border-color: rgba(227, 179, 65, .5); color: var(--warn); }
+.guardwarn.alarm { background: rgba(240, 82, 79, .10); border-color: rgba(240, 82, 79, .5); color: var(--bad); }
+.guardwarn ul { margin: 0; padding-left: 18px; color: var(--ink); display: grid; gap: 2px; }

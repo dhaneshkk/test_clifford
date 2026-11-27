@@ -48,13 +48,15 @@ impl Camera {
         [0, 1, 2].map(|i| r[i][0] * d[0] + r[i][1] * d[1] + r[i][2] * d[2])
     }
 
-    /// Pixel → deck point (metres). `None` if the ray points at or above the horizon.
+    /// Pixel → deck point (metres). `None` if the ray points at or above the horizon, is within 0.057° of it, or lands beyond 500 m.
     pub fn ground(&self, u: f64, v: f64) -> Option<[f64; 2]> {
         let d = [(u - self.cx) / self.f_px, (v - self.cy) / self.f_px, 1.0];
         let r = self.r();
         let w = [0, 1, 2].map(|i| r[i][0] * d[0] + r[i][1] * d[1] + r[i][2] * d[2]);
-        if w[2] >= -1e-9 { return None; }
+        let wn = (w[0] * w[0] + w[1] * w[1] + w[2] * w[2]).sqrt();
+        if w[2] >= -1e-9 || -w[2] < 1e-3 * wn { return None; }
         let t = self.height_m / -w[2];
+        if t * wn > 500.0 { return None; }
         Some([self.x0 + t * w[0], self.y0 + t * w[1]])
     }
 

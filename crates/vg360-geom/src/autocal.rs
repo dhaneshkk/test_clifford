@@ -13,26 +13,79 @@ use crate::camera::Camera;
 
 /// Intersection of the image lines of parallel world edges, each given by two pixels. `None` if the lines are
 /// parallel in the image too (vanishing point at infinity) or fewer than two segments are usable.
+///
+/// Hartley-normalised (points translated to their centroid and scaled to mean distance sqrt 2 before the eigen
+/// solve) and weighted by segment length, so long, well-conditioned edges dominate short noisy ones.
 pub fn vanishing_point(segments: &[([f64; 2], [f64; 2])]) -> Option<[f64; 2]> {
+    let usable: Vec<_> = segments.iter().filter(|(a, b)| (a[0] - b[0]).hypot(a[1] - b[1]) > 1e-9).collect();
+    if usable.len() < 2 { return None; }
+    let k = 2.0 * usable.len() as f64;
+    let (mx, my) = usable.iter().fold((0.0, 0.0), |s, (a, b)| (s.0 + a[0] + b[0], s.1 + a[1] + b[1]));
+    let (mx, my) = (mx / k, my / k);
+    let md = usable.iter().map(|(a, b)| (a[0] - mx).hypot(a[1] - my) + (b[0] - mx).hypot(b[1] - my)).sum::<f64>() / k;
+    if md < 1e-12 { return None; }
+    let sc = std::f64::consts::SQRT_2 / md;
     let mut m = [[0f64; 3]; 3];
-    let mut n = 0;
-    for (a, b) in segments {
-        // join of the homogeneous points (a, 1) and (b, 1)
+    for (a, b) in usable {
+        let (a, b) = ([(a[0] - mx) * sc, (a[1] - my) * sc], [(b[0] - mx) * sc, (b[1] - my) * sc]);
+        // join of the homogeneous points (a, 1) and (b, 1); unit line (distance residual) weighted by segment length
         let l = [a[1] - b[1], b[0] - a[0], a[0] * b[1] - a[1] * b[0]];
-        let s = l[0].hypot(l[1]);
-        if s < 1e-9 { continue; }
-        let l = l.map(|x| x / s);
-        for i in 0..3 { for j in 0..3 { m[i][j] += l[i] * l[j]; } }
-        n += 1;
+        let len = l[0].hypot(l[1]);
+        let l = l.map(|x| x / len);
+        for i in 0..3 { for j in 0..3 { m[i][j] += len * l[i] * l[j]; } }
     }
-    if n < 2 { return None; }
     let x = smallest_eigenvector(m);
-    (x[2].abs() > 1e-12).then(|| [x[0] / x[2], x[1] / x[2]])
+    if x[2].abs() < 1e-12 { return None; }
+    // undo the normalisation
+    Some([x[0] / x[2] / sc + mx, x[1] / x[2] / sc + my])
 }
 
 /// Focal length, pitch and roll from two vanishing points of orthogonal horizontal world directions.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
 pub struct VpCalib { pub f_px: f64, pub pitch_deg: f64, pub roll_deg: f64, pub hfov_deg: f64 }
+
+/// Why [`vp_calibrate`] refused.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VpError { TooFewLines, Degenerate, NearInfinity, NotOrthogonal, FocalOutOfRange }
+
+impl std::fmt::Display for VpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            VpError::TooFewLines => "each direction needs at least two usable line segments",
+            VpError::Degenerate => "the lines of one direction are parallel or identical in the image, so they have no vanishing point",
+            VpError::NearInfinity => "a vanishing point lies more than 50 image sizes from the centre; pick lines with more perspective",
+            VpError::NotOrthogonal => "the two directions are not orthogonal as seen by a real camera (f^2 <= 0); check the line groups",
+            VpError::FocalOutOfRange => "the recovered focal length is outside 0.3 to 10 image widths; check the lines or enter the lens by hand",
+        })
+    }
+}
+impl std::error::Error for VpError {}
+
+/// Calibrate from two groups of image segments of orthogonal horizontal world directions (deck edges, rails).
+/// Principal point = image centre. Validates every step instead of returning a bare `None`.
+pub fn vp_calibrate(lines_a: &[([f64; 2], [f64; 2])], lines_b: &[([f64; 2], [f64; 2])], w: f64, h: f64) -> Result<VpCalib, VpError> {
+    let usable = |l: &[([f64; 2], [f64; 2])]| l.iter().filter(|(a, b)| (a[0] - b[0]).hypot(a[1] - b[1]) > 1e-9).count();
+    if usable(lines_a) < 2 || usable(lines_b) < 2 { return Err(VpError::TooFewLines); }
+    // sine of the largest angle between two segment directions; identical or parallel lines give ~0
+    let spread = |l: &[([f64; 2], [f64; 2])]| {
+        let dirs: Vec<[f64; 2]> = l.iter().filter_map(|(a, b)| {
+            let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+            let n = dx.hypot(dy);
+            (n > 1e-9).then(|| [dx / n, dy / n])
+        }).collect();
+        dirs.iter().flat_map(|p| dirs.iter().map(move |q| (p[0] * q[1] - p[1] * q[0]).abs())).fold(0.0, f64::max)
+    };
+    let vp = |l: &[([f64; 2], [f64; 2])]| if spread(l) < 1e-6 { None } else { vanishing_point(l) };
+    let (v1, v2) = match (vp(lines_a), vp(lines_b)) { (Some(a), Some(b)) => (a, b), _ => return Err(VpError::Degenerate) };
+    let (cx, cy) = (w / 2.0, h / 2.0);
+    let far = 50.0 * w.max(h);
+    if [v1, v2].iter().any(|v| !v[0].is_finite() || !v[1].is_finite() || (v[0] - cx).hypot(v[1] - cy) > far) { return Err(VpError::NearInfinity); }
+    let f2 = -((v1[0] - cx) * (v2[0] - cx) + (v1[1] - cy) * (v2[1] - cy));
+    if f2 <= 0.0 { return Err(VpError::NotOrthogonal); }
+    let f = f2.sqrt();
+    if f < 0.3 * w || f > 10.0 * w { return Err(VpError::FocalOutOfRange); }
+    from_vanishing_points(v1, v2, cx, cy, w).ok_or(VpError::Degenerate)
+}
 
 pub fn from_vanishing_points(v1: [f64; 2], v2: [f64; 2], cx: f64, cy: f64, width: f64) -> Option<VpCalib> {
     let f2 = -((v1[0] - cx) * (v2[0] - cx) + (v1[1] - cy) * (v2[1] - cy));
@@ -50,24 +103,57 @@ pub fn from_vanishing_points(v1: [f64; 2], v2: [f64; 2], cx: f64, cy: f64, width
     Some(VpCalib { f_px: f, pitch_deg: pitch, roll_deg: roll, hfov_deg: 2.0 * (width / 2.0 / f).atan().to_degrees() })
 }
 
-fn ray_plane(c: [f64; 3], d: [f64; 3], n: [f64; 3], delta: f64) -> Option<[f64; 3]> {
-    let nd = n[0] * d[0] + n[1] * d[1] + n[2] * d[2];
-    if nd.abs() < 1e-12 { return None; }
-    let s = -((n[0] * c[0] + n[1] * c[1] + n[2] * c[2]) + delta) / nd;
-    Some([c[0] + s * d[0], c[1] + s * d[1], c[2] + s * d[2]])
+/// Deck point under pixel (u, v) with the ray pointing forward (s > 0).
+pub fn feet_on_deck(cam: &Camera, u: f64, v: f64) -> Option<[f64; 3]> {
+    let c = cam.centre();
+    let d = cam.ray(u, v);
+    if d[2].abs() < 1e-12 { return None; }
+    let s = -c[2] / d[2];
+    if !(s > 0.0) || !s.is_finite() { return None; }
+    Some([c[0] + s * d[0], c[1] + s * d[1], 0.0])
 }
 
-/// Head height (m) of a box [x1, y1, x2, y2] for this camera: feet ray ∧ deck, head ray ∧ the vertical plane
-/// through the feet facing the camera (the notebook's `head_height`).
-pub fn head_height(cam: &Camera, b: [f64; 4]) -> Option<f64> {
+/// Feet on the deck, head height and foot column of a standing person whose box is `b` = [x1, y1, x2, y2].
+///
+/// The box is the hull of the body, so its centre column is the mean of the foot and head columns (verticals
+/// converge in the image). Iterate: cast the feet ray through column `uf`, the head ray through `uh`, take the
+/// point of the head ray closest to the vertical line through the feet, re-project it to get the true head column
+/// and re-centre `uf`/`uh` symmetrically around the box centre. Returns `(feet, head_z, u_foot)`.
+pub fn person_vertical(cam: &Camera, b: [f64; 4]) -> Option<([f64; 3], f64, f64)> {
     let c = cam.centre();
     let uc = (b[0] + b[2]) / 2.0;
-    let ft = ray_plane(c, cam.ray(uc, b[3]), [0.0, 0.0, 1.0], 0.0)?;
-    let mut n = [ft[0] - c[0], ft[1] - c[1], 0.0];
-    let l = n[0].hypot(n[1]);
-    if l < 1e-9 { return None; }
-    n = [n[0] / l, n[1] / l, 0.0];
-    ray_plane(c, cam.ray(uc, b[1]), n, -(n[0] * ft[0] + n[1] * ft[1])).map(|x| x[2])
+    let (mut uf, mut uh) = (uc, uc);
+    let mut out = None;
+    for _ in 0..6 {
+        let ft = feet_on_deck(cam, uf, b[3])?;
+        let d = cam.ray(uh, b[1]);
+        let dxy2 = d[0] * d[0] + d[1] * d[1];
+        if dxy2 < 1e-18 { return None; }
+        let s = (d[0] * (ft[0] - c[0]) + d[1] * (ft[1] - c[1])) / dxy2;
+        if !(s > 0.0) { return None; }
+        let z = c[2] + s * d[2];
+        out = Some((ft, z, uf));
+        let uh_true = cam.project3_raw([ft[0], ft[1], z])[0];
+        let half = (uh_true - uf) / 2.0;
+        if !half.is_finite() { return None; }
+        uf = uc - half;
+        uh = uc + half;
+    }
+    let (ft, z, _) = out?;
+    // final foot and head with the last columns
+    let ft = feet_on_deck(cam, uf, b[3]).unwrap_or(ft);
+    let d = cam.ray(uh, b[1]);
+    let dxy2 = d[0] * d[0] + d[1] * d[1];
+    if dxy2 < 1e-18 { return None; }
+    let s = (d[0] * (ft[0] - c[0]) + d[1] * (ft[1] - c[1])) / dxy2;
+    if !(s > 0.0) { return None; }
+    let z = if (c[2] + s * d[2]).is_finite() { c[2] + s * d[2] } else { z };
+    (z > 0.0 && z.is_finite()).then_some((ft, z, uf))
+}
+
+/// Head height (m) of a box [x1, y1, x2, y2] for this camera (see [`person_vertical`]).
+pub fn head_height(cam: &Camera, b: [f64; 4]) -> Option<f64> {
+    person_vertical(cam, b).map(|(_, z, _)| z)
 }
 
 /// Mount height from boxes of standing people (assumed `person_m` tall, 1.70 m in the notebook), with the
@@ -161,5 +247,70 @@ mod tests {
         }
         let h = height_from_people(&c, &boxes, 1.70).unwrap();
         assert!((h - 12.0).abs() < 0.5, "{h}");
+    }
+
+    /// 1.70 m person, 0.5 x 0.3 m footprint centred on (x, y); box = hull of the projected 8 corners,
+    /// top row at (x, y, 1.70), bottom row at (x, y, 0)
+    fn person_box(c: &Camera, x: f64, y: f64) -> Option<[f64; 4]> {
+        let r = c.rotation();
+        let mut us = Vec::new();
+        for dx in [-0.25, 0.25] { for dy in [-0.15, 0.15] { for z in [0.0, 1.7] {
+            let d = [x + dx - c.x0, y + dy - c.y0, z - c.height_m];
+            let cz = r[0][2] * d[0] + r[1][2] * d[1] + r[2][2] * d[2];
+            if cz <= 0.1 { return None; }
+            us.push(c.project3_raw([x + dx, y + dy, z])[0]);
+        }}}
+        let (u1, u2) = (us.iter().cloned().fold(f64::MAX, f64::min), us.iter().cloned().fold(f64::MIN, f64::max));
+        let (t, f) = (c.project3_raw([x, y, 1.7]), c.project3_raw([x, y, 0.0]));
+        Some([u1, t[1], u2, f[1]])
+    }
+
+    #[test]
+    fn head_height_unbiased_offaxis() {
+        let mut n = 0;
+        for pitch in [35.0, 50.0] { for roll in [0.0, 5.0] {
+            let c = cam(pitch, roll, 0.0);
+            for (x, y) in [(0.0, 12.0), (4.0, 12.0), (8.0, 12.0), (8.0, 14.0), (-6.0, 20.0), (10.0, 8.0)] {
+                let Some(b) = person_box(&c, x, y) else { eprintln!("skip pitch {pitch} ({x},{y}): behind camera"); continue };
+                let h = height_from_people(&c, &[b], 1.70).unwrap_or(f64::NAN);
+                eprintln!("pitch {pitch} roll {roll} ({x},{y}) -> {h:.4}");
+                assert!((h - 12.0).abs() < 0.06, "pitch {pitch} roll {roll} at ({x},{y}): {h}");
+                n += 1;
+            }
+        }}
+        assert!(n >= 20, "only {n} boxes were usable");
+    }
+
+    fn seg(c: &Camera, dir: [f64; 2], o: f64) -> ([f64; 2], [f64; 2]) {
+        let n = [-dir[1], dir[0]];
+        let base = [n[0] * o, n[1] * o + 25.0];
+        let p = |s: f64| c.project3_raw([base[0] + s * dir[0], base[1] + s * dir[1], 0.0]);
+        (p(-6.0), p(6.0))
+    }
+
+    #[test]
+    fn vp_calibrate_ok_and_errors() {
+        let c = cam(35.0, 0.0, 0.0);
+        let q = std::f64::consts::FRAC_1_SQRT_2;
+        let (d1, d2) = ([q, q], [q, -q]);
+        let g1: Vec<_> = (0..5).map(|k| seg(&c, d1, -8.0 + 4.0 * k as f64)).collect();
+        let g2: Vec<_> = (0..5).map(|k| seg(&c, d2, -8.0 + 4.0 * k as f64)).collect();
+        let k = vp_calibrate(&g1, &g2, 1280.0, 720.0).unwrap();
+        assert!((k.f_px - 900.0).abs() < 5.0 && (k.pitch_deg - 35.0).abs() < 0.5, "{k:?}");
+        assert_eq!(vp_calibrate(&g1[..1], &g2, 1280.0, 720.0), Err(VpError::TooFewLines));
+        let par: Vec<_> = (0..3).map(|k| ([100.0, 100.0 + 50.0 * k as f64], [500.0, 100.0 + 50.0 * k as f64])).collect();
+        assert_eq!(vp_calibrate(&par, &g2, 1280.0, 720.0), Err(VpError::Degenerate));
+        assert_eq!(vp_calibrate(&[g1[0], g1[0]], &g2, 1280.0, 720.0), Err(VpError::Degenerate));
+        // nearly parallel lines: the vanishing point is millions of pixels away
+        let near: Vec<_> = (0..3).map(|k| ([100.0, 100.0 + 50.0 * k as f64], [500.0, 100.0 + 50.0 * k as f64 + 0.01 * k as f64])).collect();
+        assert_eq!(vp_calibrate(&near, &g2, 1280.0, 720.0), Err(VpError::NearInfinity));
+        // both vanishing points on the same side of the centre -> f^2 <= 0
+        assert_eq!(vp_calibrate(&g1, &g1, 1280.0, 720.0), Err(VpError::NotOrthogonal));
+        // orthogonal-looking but implausible focal length: vanishing points 20 px either side of the centre -> f = 20
+        let toward = |vx: f64, vy: f64| -> Vec<([f64; 2], [f64; 2])> {
+            [(0.3, 1.0), (-0.3, 1.0), (0.0, 1.0)].iter().map(|(dx, dy)| ([vx + 100.0 * dx, vy + 100.0 * dy], [vx + 300.0 * dx, vy + 300.0 * dy])).collect()
+        };
+        assert_eq!(vp_calibrate(&toward(660.0, 360.0), &toward(620.0, 360.0), 1280.0, 720.0), Err(VpError::FocalOutOfRange));
+        assert!(!VpError::NotOrthogonal.to_string().is_empty());
     }
 }

@@ -136,8 +136,11 @@ Calibration tells VG360 how pixels map to metres on the deck. There are three wa
 ### 4.1 From deck points (most accurate)
 
 In the Rig Twin, give a camera four or more calibration points: deck spots with known (x, y) metres and
-the pixel where each appears. VG360 solves focal length, height, pitch, yaw and roll (DLT and then
-Levenberg–Marquardt). It checks the runtime camera against the twin's own projection, to within 1 px.
+the pixel where each appears. The console does not solve the camera from these points. It runs on the
+twin's own field of view, pitch, height and yaw. The points are a check: **Check vs twin** on `/twin`
+projects them through the runtime camera and shows the RMS pixel distance (green under 1 px). Fisheye
+cameras show *not computed for fisheye*. If you have no surveyed points, use §4.2 and type its `twin`
+values into the camera.
 
 ### 4.2 From vanishing points (no surveyed points)
 
@@ -147,7 +150,8 @@ vanishing point), and two such points give the camera's focal length, pitch and 
 proved in `lean/VG360/Calib.lean` (`focal_from_orthogonal_vps`).
 
 1. On a still frame, mark **2–6 segments** along edges running one way (family A), and 2–6 along edges
-   at right angles to them (family B). Long segments spread across the image work best.
+   at right angles to them (family B). Each family needs at least two. Long segments spread across the
+   image work best. Take both families from rectangular plates or rails whose corners you can see are square.
 2. Optionally, mark boxes around a few **workers standing upright**. Those give the mount height.
 3. Send them to the console (the pixel values below are only an example):
 
@@ -160,15 +164,33 @@ curl -s localhost:3000/api/calibrate -H 'content-type: application/json' -d '{
 }'
 ```
 
-The reply contains:
+A solve that succeeds returns `"ok": true` with `f_px`, `hfov_deg`, `pitch_deg`, `roll_deg`, the two
+`vanishing_points`, `height_m` (when people were given), a `twin` block to type into the Rig Twin (`fov` is
+the horizontal field of view, plus `pitch` and `h_above_deck`), `notes` and `warnings`. The solve assumes
+square pixels and a centred principal point.
 
-- `f_px`, `hfov_deg`, `pitch_deg`, `roll_deg`;
-- `height_m`, when people were given;
-- a `twin` block with the values to type into the Rig Twin: `fov`, `pitch` and `h_above_deck`;
-- `notes`. For example, it warns when roll is above 2°, because the twin assumes a level camera.
+`warnings` lists what to check before you trust the numbers:
 
-If the families are not really at right angles, or a family's lines are parallel in the image, the reply
-says why (`"ok": false`).
+- roll above 2°: level the camera, or calibrate from deck points (the twin assumes zero roll);
+- fewer than 3 people: the height is approximate;
+- no height could be estimated from the people boxes.
+
+**Two vanishing points cannot prove that the edges are at right angles.** The solver assumes the two
+families are perpendicular, so a skewed pair gives a wrong focal length with no error unless the result
+breaks one of the checks below. Pick edges of rectangular plates, and check the result against a dimension
+you know if you can.
+
+Rejected requests return HTTP 400 with `"ok": false` and an `error` message:
+
+| Check | Rule |
+|---|---|
+| Input | `width` and `height` in 100–16384 px; `person_m` in 1.0–2.5 m (default 1.70); each segment finite and at least 1 px long; each person box has `x2 > x1` and `y2 > y1` and lies inside the frame |
+| Too few lines | each family needs at least two usable segments |
+| Parallel in the image | lines of one family must converge: pick edges that recede into the distance |
+| Vanishing point near infinity | more than 50 image sizes from the centre: pick lines with more perspective |
+| Not orthogonal | f² ≤ 0: the two families cannot be perpendicular on the deck |
+| Focal length out of range | outside 0.3 to 10 image widths |
+| Implausible result | field of view outside 10–170° or pitch outside −5–89° |
 
 ### 4.3 Mount height from people, live (auto-height)
 
@@ -178,9 +200,11 @@ If you know the field of view and pitch but not the mount height, let the camera
 export VG360_CAM_C5_AUTO_HEIGHT=1
 ```
 
-- **How it works:** every distance scales linearly with mount height (`Calib.head_height_scales`). The worker collects the first 12 boxes of upright workers and sets the height so their median head is at 1.70 m.
+- **How it works:** the worker takes up to four samples per tracked person, at least 0.5 s apart, so no single person dominates. A sample is an upright box at least 40 px tall, not touching the image edge, with a detector score of at least 0.5, taken only while the view is aligned (§6). Each head height is measured along the person's vertical line, so workers off to the side do not bias it. The height is set so the median head is at 1.70 m. Every distance scales linearly with mount height (`Calib.head_height_scales`), so the starting value does not matter.
+- **How many people:** at least three different people and 12 samples. After 300 s it estimates from whatever it has, as long as at least three people were seen.
+- **Estimates outside 1.5–60 m are rejected.** A rejection clears the samples and collection starts again. After five rejections, or 300 s with fewer than three people seen, the estimate has **failed**: the camera shows *Mount height could not be estimated — rules off*, a `height-estimate-failed` event is logged, and rules stay off until the console restarts.
 - **No rules while it runs.** Until the height is set, people are tracked but **no rule is evaluated**, and `/live` shows *estimating mount height (rules off)*.
-- **Afterwards:** the result is logged to vesdb as a `height-estimated` camera event. Copy it into the twin so the next start does not need to estimate again.
+- **Afterwards:** the result is logged to vesdb as a `height-estimated` camera event, and the calibration hash in later evidence follows the new height. Copy it into the twin so the next start does not need to estimate again.
 - **Accuracy:** on the demo clip, a camera set to 6 m corrects itself to 9.8 m (true height 10 m, workers rendered 1.75 m tall) after 0.4 s.
 - **Fisheye cameras:** auto-height applies to standard (pinhole) cameras only. Fisheye cameras need deck points or a known mount height.
 
@@ -207,8 +231,8 @@ Boxes on `/live` are drawn on the fisheye image itself.
 ```
 
 - **Lens parameters:** `fx`, `fy`, `cx`, `cy` and `k` are the Kannala–Brandt intrinsics (OpenCV's `cv2.fisheye` model), in the camera's own pixels. Take them from the vendor's calibration sheet, or from a checkerboard calibration.
-- **Views:** `views` lists `[compass bearing°, pitch°]` pairs and is optional.
-  - Camera looking down (pitch ≥ 60°): the default is three views 120° apart at 35° down.
+- **Views:** `views` lists `[angle°, pitch°]` pairs and is optional. The angle uses the same convention as the camera's `yaw` in the Rig Twin: a maths angle (0° = east, counter-clockwise), **not** a compass bearing. An empty list is an error; leave the key out for the defaults.
+  - Camera looking down (pitch ≥ 60°): the default is three views 120° apart at 35° down, starting at the camera's heading.
   - Otherwise: views at −45°, 0° and +45° around the camera's heading.
   - Each view is 960×540 with a 70° field of view.
 - **Resolution:** use 5 MP or more. On the demo, a 2880² (8 MP) fisheye finds 56 of the 57 people the pinhole camera finds, with deck positions within a median of 0.06 m. At 1280² (1.6 MP), people are too small to be detected reliably.
@@ -219,7 +243,7 @@ Boxes on `/live` are drawn on the fisheye image itself.
 
 ## 6. Camera guard: moved, blocked or lost cameras
 
-Each worker compares the live view with the reference view captured at start-up, about 4 times a second.
+Each worker compares the live view with its **reference view**, the view the ground calibration belongs to. It measures the position about three times a second (every third analysed frame at the default 10 fps). The status follows the median of the last five measurements, not a single one.
 
 ![Camera page: CAM-05 knocked, guidance and compensated analytics](images/camera.jpg)
 *Camera page for a knocked camera:*
@@ -231,13 +255,51 @@ Each worker compares the live view with the reference view captured at start-up,
 
 | Situation | Guard status | Analytics |
 |---|---|---|
-| View matches | POSITION CORRECT | **Aligned**: calibration used as is |
-| Small knock (≤ 8 % shift, ≤ 5° rotation, ≤ 6 % zoom, ≥ 60 matched points) | CAMERA MOVED | **Compensated**: detections mapped back through the measured homography; alerts carry `mode: Compensated` |
-| Larger move, lens covered, view lost, or any move of a fisheye | CAMERA MOVED / BLOCKED / LOST | **Paused**: no analytics and no alerts |
+| Matches the reference (inside the correct limits below) for 2 s | POSITION CORRECT | **Aligned**: calibration used as is |
+| Moved, but small enough to compensate (≤ 8 % shift, ≤ 5° rotation, ≤ 6 % zoom, ≥ 60 matched points) | CAMERA MOVED | **Compensated**: detections mapped back through the measured homography; alerts carry `mode: Compensated` |
+| Moved further, lens covered, view not recognised, or any move of a fisheye | CAMERA MOVED / BLOCKED / LOST | **Paused**: no analytics and no alerts |
+
+| Measure | Moved above | Correct below |
+|---|---|---|
+| Shift (fraction of image width) | 2.0 % | 0.8 % |
+| Rotation | 1.5° | 0.6° |
+| Zoom | 4 % | 1.5 % |
+| Tilt (corner shift) | 3 % | 1.2 % |
+
+A view is *moved* when any measure is above its "moved" limit, and *correct* when all are below their "correct" limits.
 
 - **Guidance:** the camera page gives instructions such as *Move view RIGHT 5.5 %, rotate ANTI-CLOCKWISE 3.2°*, with a blue box showing where the correct view now sits in the image.
-- **Clearing the alarm:** the alarm clears after the view has been aligned for the hold time.
-- **Evidence:** every change of guard status is logged to vesdb.
+- **Holds:** a status change is raised only after its condition has lasted: CAMERA MOVED 3 s, CAMERA BLOCKED 5 s, VIEW LOST 20 s. A brief cover or a single bad frame changes nothing.
+- **Dead band:** between the "moved" and "correct" limits the view is neither. A POSITION CORRECT camera stays that way. A camera in an alarm shows REALIGNING.
+- **Clearing the alarm:** the view must stay correct for 2 s before POSITION CORRECT returns. While it waits, the status is REALIGNING.
+- **Weak fits:** with fewer than 60 matched points a measurement can raise CAMERA MOVED but cannot clear an alarm, and analytics pause on it unless the view is already correct. With fewer than 15 matched points there is no measurement at all, and the status goes to VIEW LOST after 20 s.
+- **Analytics stop at once:** detection and rules stop on the first blocked or unrecognised frame, while the alarm still waits out its hold time. The warning reads *Analytics suspended: …* in the meantime.
+- **Stored reference:** the reference is saved as `state/reference/<ID>.png` with `state/reference/<ID>.json` (background points and hash). After a restart the stored view is used, so a camera moved while the console was down shows CAMERA MOVED after the 3 s hold. A stored reference that is missing, altered or unusable is replaced by a new capture.
+- **Re-baselining:** after a deliberate re-mount, delete both reference files and restart, or set `VG360_CAM_<ID>_REREFERENCE=1` for one start and then unset it. Then recalibrate (§4).
+- **Reference checks:** a new reference needs a mean brightness of at least 15, a contrast (standard deviation) of at least 10, and at least 80 background points. If no capture passes for 30 s, the camera shows `reference unusable: <reason>` and capture keeps retrying.
+- **Stream stall:** after 5 s with no frame, the camera shows *Stream stalled — no frame for N s* (alarm). After 30 s the worker reports `stream stalled: no frames for 30 s`. It keeps reconnecting, and the alarm clears when frames return.
+- **Where warnings appear:** the banner on each `/live` tile, the camera page of a live camera (`/cameras/{id}`), the overview's camera-guard alarm count (a camera counts when its warning is an alarm or its status is not POSITION CORRECT), `/v1/cameras`, and the chat.
+- **Evidence:** every change of guard status or analytics mode is logged to vesdb as `camera-guard-changed`.
+
+**Warning texts** (the same text appears on `/live`, the camera page, `/v1/cameras` and in the chat):
+
+| Level | Text | When |
+|---|---|---|
+| alarm | Lens blocked — analytics paused (clean / uncover the camera) | covered or flat image for 5 s |
+| alarm | View not recognised — analytics paused (ground calibration no longer valid) | no usable match for 20 s |
+| alarm | Camera moved — analytics paused (ground calibration no longer valid); re-aim the camera | moved beyond compensation |
+| warn | Camera moved — analytics continue through shift compensation; please re-aim the camera | moved, compensated |
+| warn | Realigning — hold the camera steady | after an alarm, until correct for 2 s |
+| warn | Analytics suspended: lens blocked / view not recognised — confirming (N s) | first bad frame, before the hold time |
+| warn | Possible camera movement / Possible lens blockage / View not recognised — confirming (N s) | a change is inside its hold time |
+| warn | Camera position changed — analytics paused while the guard confirms | a large move, before the guard has started its hold timer |
+| warn | Small camera shift — analytics continue through shift compensation; check the camera | a small shift that is not yet an alarm, e.g. a 4 % zoom |
+| warn | Starting — waiting for the first frame | the worker has not delivered a frame yet |
+| warn | Estimating mount height — rules off | auto-height running |
+| alarm | Mount height could not be estimated — rules off; set the height in the twin / VG360_LIVE_HEIGHT | auto-height failed |
+| alarm | Stream stalled — no frame for N s; analytics are not running | no frame for 5 s |
+| alarm | No signal: *error* | the camera reports an error, such as `reference unusable` |
+| ok | Position correct | none of the above |
 
 ---
 
@@ -406,6 +468,10 @@ on it.
 |---|---|
 | `VG360_CAM_<ID>_URL` | stream of twin camera `<ID>` (RTSP or file) |
 | `VG360_CAM_<ID>_AUTO_HEIGHT=1` | estimate that camera's mount height from standing workers (§4.3) |
+| `VG360_CAM_<ID>_REREFERENCE=1` | capture a new reference view at the next start instead of loading the stored one (§6). Unset it after that start, or every restart replaces the reference |
+| `RTSP_FEED` | a standalone real camera `LIVE` (generic pinhole, no zones); replaces the demo |
+| `VG360_LIVE_SIZE` · `_HFOV` · `_PITCH` · `_HEIGHT` | `LIVE` camera: `1280x720` · 70° · 25° · unset = estimate the mount height from people. Each value is checked: `WIDTHxHEIGHT` with 64–8192 px per side, field of view 10–170°, pitch −5–89°, height 0.5–100 m. A malformed or out-of-range value does not start the `LIVE` camera; it is listed with a configuration error |
+| `FFMPEG` | path to `ffmpeg` if it is not on `PATH` |
 | `VG360_DEMO=1` · `VG360_DEMO_FISHEYE=1` · `VG360_DEMO_CLIP` | demo cameras / replace the demo clip |
 | `VG360_FPS` · `VG360_TILES` | analysed frames per second (10) · detection tiles (1) |
 | `VG360_DETECTOR` · `VG360_ALLOW_SMOKE_MODELS` | fine-tuned detector · allow smoke-trained models (tests) |
@@ -423,13 +489,19 @@ on it.
 | Symptom | Cause and fix |
 |---|---|
 | `/live` says *No camera streams are running* | No `VG360_CAM_<ID>_URL` matches a camera of the applied twin (check the id spelling and the dash → underscore rule), or `VG360_DEMO` is not set. |
+| Camera card stays on *starting…* for about 30 s, then shows an error | ffmpeg was not found (put it on `PATH` or set `FFMPEG`) or the camera is unreachable. The console's stderr says which. |
 | Camera card shows an error *no frames from stream* | ffmpeg cannot open the URL. Run with `VG360_GUARD_DEBUG=1` to see why: credentials, network, codec. |
 | *PPE classifier disabled: … is not the model its card describes* | The ONNX file was replaced without its card. Re-export both from the notebook. |
 | Fine-tuned detector *refused* on `/training` | Its card says it was trained on synthetic data, or its SHA-256 does not match. Train on labelled site frames. |
 | People missed on overhead / night cameras | Known limit of the stock COCO detector. Raise `VG360_TILES`, and fine-tune on your frames (§10). |
 | Analytics paused on a fisheye after a bump | Expected: fisheyes are not compensated. Re-aim the camera until the guard reads POSITION CORRECT. |
-| `/api/calibrate` returns `f² ≤ 0` | The two line families are not at right angles on the deck, or both run nearly the same way. Pick edges of rectangular plates. |
-| Auto-height never finishes | Fewer than 12 upright workers have been seen. Wait, or set the height in the twin. |
+| `/api/calibrate` returns 400 with `ok: false` | The `error` says why: bad input, too few lines, lines parallel in the image, families not at right angles (`f² ≤ 0`), or focal length or field of view out of range (§4.2). Pick edges of rectangular plates for both families. |
+| Auto-height stays on *estimating* | Fewer than three different upright people, or fewer than 12 samples, have been collected (§4.3). Wait for people to walk through the view, or set the height in the twin and remove `AUTO_HEIGHT`. |
+| Mount height could not be estimated — rules off | Five estimates fell outside 1.5–60 m, or 300 s passed with fewer than three different people seen. Check the field of view and pitch in the twin, make sure workers are upright and in view, then restart. Or set the height in the twin and remove `AUTO_HEIGHT`. |
+| `reference unusable: …` | The first 30 s of frames gave no usable reference view: too dark (mean under 15), flat (contrast under 10), or fewer than 80 background points. Let the scene light up, or aim the camera at structured deck (rails, plates). Capture retries by itself. |
+| Stream stalled — no frame for N s | The stream has stopped delivering. The worker keeps reconnecting; check the camera, the network and `VG360_GUARD_DEBUG=1`. The alarm clears when frames return. |
+| Realigning won't clear | The view must sit inside the correct limits (§6) for 2 s, with at least 60 matched points. Fog, darkness, glare or a changed scene give too few matches to clear. Follow the guidance. If the change was deliberate, re-baseline (§6). |
+| CAMERA MOVED right after a restart | The stored reference (`state/reference/<ID>.png`) is compared on start, so a camera knocked or re-aimed while the console was down shows as moved. Re-aim it. If it was deliberately re-mounted, re-baseline (§6). |
 | Every alert is *shadow* | The rules config is a draft, or a rule's MCC is below its floor (§7). |
 | Build error mentioning `int_format_into` / Rust version | The console needs Rust ≥ 1.99 (`rustup update`). |
 
